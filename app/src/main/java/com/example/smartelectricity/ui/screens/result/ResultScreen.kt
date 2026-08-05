@@ -174,6 +174,9 @@ fun ResultScreen(
                         if (result.fixedChargeDeductedRand > 0) {
                             AllocationRow(label = "Monthly Network Access Charge Deducted", value = "-R${"%.2f".format(result.fixedChargeDeductedRand)}", isHighlight = true)
                         }
+                        if (result.arrearsDeductedRand > 0) {
+                            AllocationRow(label = "Authorised arrears recovery", value = "-R${"%.2f".format(result.arrearsDeductedRand)}", isHighlight = true)
+                        }
                         AllocationRow(label = "Net Money Available for Energy", value = "R${"%.2f".format(result.netEnergyPurchaseRand)}")
                         AllocationRow(label = "Included VAT (15%)", value = "R${"%.2f".format(result.vatAmountRand)}")
 

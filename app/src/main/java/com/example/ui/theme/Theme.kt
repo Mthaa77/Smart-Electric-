@@ -4,8 +4,10 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
 private val LightColorScheme = lightColorScheme(
     primary = PrimarySkyBlue,
@@ -59,6 +61,14 @@ private val DarkColorScheme = darkColorScheme(
     onErrorContainer = Color(0xFFFEE2E2)
 )
 
+private val PremiumShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(26.dp),
+    extraLarge = RoundedCornerShape(32.dp)
+)
+
 @Composable
 fun SmartElectricityTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -77,6 +87,7 @@ fun SmartElectricityTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = PremiumShapes,
         content = content
     )
 }

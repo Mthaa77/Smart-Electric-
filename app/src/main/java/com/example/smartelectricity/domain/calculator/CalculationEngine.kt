@@ -17,29 +17,25 @@ object CalculationEngine {
         daysSinceLastPurchase: Int = 0,
         arrearsDeductionRand: Double = 0.0
     ): CalculationResult {
+        val safeAmountRand = amountRand.finiteOrZero().coerceAtLeast(0.0)
+        val safeUnitsAlreadyAllocated = unitsAlreadyAllocatedThisMonth.finiteOrZero().coerceAtLeast(0.0)
+        val safeDaysSinceLastPurchase = daysSinceLastPurchase.coerceAtLeast(0)
+        val safeArrearsDeduction = arrearsDeductionRand.finiteOrZero().coerceAtLeast(0.0)
         val stepExplanations = mutableListOf<String>()
-        stepExplanations.add("1. Tendered Purchase Amount: R${"%.2f".format(amountRand)}")
+        stepExplanations.add("1. Tendered Purchase Amount: R${"%.2f".format(safeAmountRand)}")
 
         // Fixed Charge Recovery
-        val fixedChargeToRecover = when {
-            profile.dailyFixedChargeRand > 0.0 && daysSinceLastPurchase > 0 -> {
-                daysSinceLastPurchase * profile.dailyFixedChargeRand
-            }
-            isFirstPurchaseOfMonth -> {
-                profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand
-            }
-            else -> 0.0
-        }
+        val fixedChargeToRecover = fixedChargeForPurchase(profile, isFirstPurchaseOfMonth, safeDaysSinceLastPurchase)
 
-        val fixedChargeDeducted = if (amountRand >= fixedChargeToRecover) {
+        val fixedChargeDeducted = if (safeAmountRand >= fixedChargeToRecover) {
             fixedChargeToRecover
         } else {
-            amountRand
+            safeAmountRand
         }
 
         if (fixedChargeToRecover > 0.0) {
-            if (profile.dailyFixedChargeRand > 0.0 && daysSinceLastPurchase > 0) {
-                stepExplanations.add("2. Accrued Daily Fixed Charge Deducted: R${"%.2f".format(fixedChargeDeducted)} ($daysSinceLastPurchase days @ R${"%.2f".format(profile.dailyFixedChargeRand)}/day)")
+            if (profile.dailyFixedChargeRand > 0.0 && safeDaysSinceLastPurchase > 0) {
+                stepExplanations.add("2. Accrued Daily Fixed Charge Deducted: R${"%.2f".format(fixedChargeDeducted)} ($safeDaysSinceLastPurchase days @ R${"%.2f".format(profile.dailyFixedChargeRand)}/day)")
             } else {
                 stepExplanations.add("2. Monthly Fixed Network & Service Fee Deducted: R${"%.2f".format(fixedChargeDeducted)} (1st purchase of the month)")
             }
@@ -48,19 +44,19 @@ object CalculationEngine {
         }
 
         // Arrears / Debt Deductions
-        val arrearsDeducted = if (arrearsDeductionRand > 0.0) {
-            arrearsDeductionRand.coerceAtMost(max(0.0, amountRand - fixedChargeDeducted))
+        val arrearsDeducted = if (safeArrearsDeduction > 0.0) {
+            safeArrearsDeduction.coerceAtMost(max(0.0, safeAmountRand - fixedChargeDeducted))
         } else 0.0
 
         if (arrearsDeducted > 0.0) {
             stepExplanations.add("3. Authorised Debt / Arrears Recovery Deducted: -R${"%.2f".format(arrearsDeducted)}")
         }
 
-        val netEnergyRand = (amountRand - fixedChargeDeducted - arrearsDeducted).coerceAtLeast(0.0)
+        val netEnergyRand = (safeAmountRand - fixedChargeDeducted - arrearsDeducted).coerceAtLeast(0.0)
         stepExplanations.add("4. Amount Available for Electricity Energy: R${"%.2f".format(netEnergyRand)}")
 
         // FBE Allocation
-        val fbeUnitsKwh = if (profile.fbeConfig.isAvailable && isIndigentEligible && !hasClaimedFbeThisMonth && isFirstPurchaseOfMonth) {
+        val fbeUnitsKwh = if (isFbeAvailableForPurchase(profile, isIndigentEligible, hasClaimedFbeThisMonth, isFirstPurchaseOfMonth, safeUnitsAlreadyAllocated)) {
             profile.fbeConfig.freeKwh
         } else 0.0
 
@@ -68,7 +64,9 @@ object CalculationEngine {
             stepExplanations.add("5. Free Basic Electricity (FBE) Applied: +${"%.1f".format(fbeUnitsKwh)} kWh free units")
         } else if (hasClaimedFbeThisMonth) {
             stepExplanations.add("5. FBE Status: 0 kWh (FBE allocation already claimed earlier this month)")
-        } else if (!isIndigentEligible && profile.fbeConfig.isAvailable) {
+        } else if (profile.fbeConfig.monthlyUsageCapKwh?.let { safeUnitsAlreadyAllocated >= it } == true) {
+            stepExplanations.add("5. FBE Status: 0 kWh (monthly usage cap already reached)")
+        } else if (!isIndigentEligible && profile.fbeConfig.indigentRegistrationRequired && profile.fbeConfig.isAvailable) {
             stepExplanations.add("5. FBE Status: 0 kWh (Household not registered for indigent relief / FBE)")
         } else {
             stepExplanations.add("5. FBE Status: N/A on this tariff profile")
@@ -77,7 +75,7 @@ object CalculationEngine {
         // Calculate Paid kWh through Tariff Blocks starting at cumulative monthly units
         var remainingNetRand = netEnergyRand
         var totalPaidKwh = 0.0
-        var currentMonthlyCumulativeKwh = unitsAlreadyAllocatedThisMonth
+        var currentMonthlyCumulativeKwh = safeUnitsAlreadyAllocated
         val blockBreakdowns = mutableListOf<BlockBreakdown>()
 
         val blocks = profile.blocks.sortedBy { it.blockNumber }
@@ -147,13 +145,13 @@ object CalculationEngine {
         } else 0.0
 
         val effectiveRandPerKwh = if (totalKwh > 0.0) {
-            amountRand / totalKwh
+            safeAmountRand / totalKwh
         } else 0.0
 
         val vatAmount = if (profile.vatInclusiveRates) {
-            amountRand * (profile.vatRatePercent / (100.0 + profile.vatRatePercent))
+            safeAmountRand * (profile.vatRatePercent / (100.0 + profile.vatRatePercent))
         } else {
-            amountRand * (profile.vatRatePercent / 100.0)
+            safeAmountRand * (profile.vatRatePercent / 100.0)
         }
 
         val confidenceMessage = when (profile.verificationStatus) {
@@ -164,14 +162,15 @@ object CalculationEngine {
 
         return CalculationResult(
             mode = CalculationMode.RAND_TO_KWH,
-            inputAmount = amountRand,
+            inputAmount = safeAmountRand,
             distributor = distributor,
             profile = profile,
             isFirstPurchaseOfMonth = isFirstPurchaseOfMonth,
             hasClaimedFbeThisMonth = hasClaimedFbeThisMonth,
-            grossPurchaseRand = amountRand,
+            grossPurchaseRand = safeAmountRand,
             vatAmountRand = vatAmount,
             fixedChargeDeductedRand = fixedChargeDeducted,
+            arrearsDeductedRand = arrearsDeducted,
             netEnergyPurchaseRand = netEnergyRand,
             paidKwh = totalPaidKwh,
             freeFbeKwh = fbeUnitsKwh,
@@ -194,17 +193,23 @@ object CalculationEngine {
         isFirstPurchaseOfMonth: Boolean,
         hasClaimedFbeThisMonth: Boolean,
         isIndigentEligible: Boolean = false,
-        unitsAlreadyAllocatedThisMonth: Double = 0.0
+        unitsAlreadyAllocatedThisMonth: Double = 0.0,
+        daysSinceLastPurchase: Int = 0,
+        arrearsDeductionRand: Double = 0.0
     ): CalculationResult {
+        val safeTargetKwh = targetKwh.finiteOrZero().coerceAtLeast(0.0)
+        val safeUnitsAlreadyAllocated = unitsAlreadyAllocatedThisMonth.finiteOrZero().coerceAtLeast(0.0)
+        val safeDaysSinceLastPurchase = daysSinceLastPurchase.coerceAtLeast(0)
+        val safeArrearsDeduction = arrearsDeductionRand.finiteOrZero().coerceAtLeast(0.0)
         val stepExplanations = mutableListOf<String>()
-        stepExplanations.add("1. Target Electricity Quantity: ${"%.2f".format(targetKwh)} kWh")
+        stepExplanations.add("1. Target Electricity Quantity: ${"%.2f".format(safeTargetKwh)} kWh")
 
         // FBE Adjustment
-        val fbeUnitsKwh = if (profile.fbeConfig.isAvailable && isIndigentEligible && !hasClaimedFbeThisMonth && isFirstPurchaseOfMonth) {
-            profile.fbeConfig.freeKwh
+        val fbeUnitsKwh = if (isFbeAvailableForPurchase(profile, isIndigentEligible, hasClaimedFbeThisMonth, isFirstPurchaseOfMonth, safeUnitsAlreadyAllocated)) {
+            profile.fbeConfig.freeKwh.coerceAtMost(safeTargetKwh)
         } else 0.0
 
-        val paidKwhNeeded = (targetKwh - fbeUnitsKwh).coerceAtLeast(0.0)
+        val paidKwhNeeded = (safeTargetKwh - fbeUnitsKwh).coerceAtLeast(0.0)
         if (fbeUnitsKwh > 0) {
             stepExplanations.add("2. FBE Discount Applied: ${"%.1f".format(fbeUnitsKwh)} kWh free. Paid units needed: ${"%.2f".format(paidKwhNeeded)} kWh")
         } else {
@@ -213,7 +218,7 @@ object CalculationEngine {
 
         // Compute energy cost across blocks starting at cumulative monthly units
         var remainingKwhToBuy = paidKwhNeeded
-        var currentMonthlyCumulativeKwh = unitsAlreadyAllocatedThisMonth
+        var currentMonthlyCumulativeKwh = safeUnitsAlreadyAllocated
         var grossEnergyCostRand = 0.0
         val blockBreakdowns = mutableListOf<BlockBreakdown>()
 
@@ -254,26 +259,30 @@ object CalculationEngine {
 
         stepExplanations.add("3. Energy Cost Across Tariff Blocks: R${"%.2f".format(grossEnergyCostRand)}")
 
-        val fixedCharge = if (isFirstPurchaseOfMonth) {
-            profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand
-        } else 0.0
+        val fixedCharge = fixedChargeForPurchase(profile, isFirstPurchaseOfMonth, safeDaysSinceLastPurchase)
 
         if (fixedCharge > 0.0) {
-            stepExplanations.add("4. Monthly Fixed Access & Network Fee: R${"%.2f".format(fixedCharge)} (Recovered on 1st monthly purchase)")
+            val detail = if (profile.dailyFixedChargeRand > 0.0 && safeDaysSinceLastPurchase > 0) {
+                "$safeDaysSinceLastPurchase days @ R${"%.2f".format(profile.dailyFixedChargeRand)}/day"
+            } else "Recovered on 1st monthly purchase"
+            stepExplanations.add("4. Fixed Access & Network Fee: R${"%.2f".format(fixedCharge)} ($detail)")
         } else {
             stepExplanations.add("4. Fixed Access Fees: R0.00")
         }
 
-        val totalGrossRand = grossEnergyCostRand + fixedCharge
-        stepExplanations.add("5. Total Estimated Purchase Amount Required: R${"%.2f".format(totalGrossRand)}")
+        if (safeArrearsDeduction > 0.0) {
+            stepExplanations.add("5. Authorised Debt / Arrears Recovery to include: R${"%.2f".format(safeArrearsDeduction)}")
+        }
+        val totalGrossRand = grossEnergyCostRand + fixedCharge + safeArrearsDeduction
+        stepExplanations.add("6. Total Estimated Purchase Amount Required: R${"%.2f".format(totalGrossRand)}")
 
         val averageRateCents = if (paidKwhNeeded > 0) (grossEnergyCostRand / paidKwhNeeded) * 100.0 else 0.0
-        val effectiveRandPerKwh = if (targetKwh > 0) totalGrossRand / targetKwh else 0.0
-        val vatAmount = totalGrossRand * (profile.vatRatePercent / (100.0 + profile.vatRatePercent))
+        val effectiveRandPerKwh = if (safeTargetKwh > 0) totalGrossRand / safeTargetKwh else 0.0
+        val vatAmount = vatFromGross(totalGrossRand, profile)
 
         return CalculationResult(
             mode = CalculationMode.KWH_TO_RAND,
-            inputAmount = targetKwh,
+            inputAmount = safeTargetKwh,
             distributor = distributor,
             profile = profile,
             isFirstPurchaseOfMonth = isFirstPurchaseOfMonth,
@@ -281,10 +290,11 @@ object CalculationEngine {
             grossPurchaseRand = totalGrossRand,
             vatAmountRand = vatAmount,
             fixedChargeDeductedRand = fixedCharge,
+            arrearsDeductedRand = safeArrearsDeduction,
             netEnergyPurchaseRand = grossEnergyCostRand,
             paidKwh = paidKwhNeeded,
             freeFbeKwh = fbeUnitsKwh,
-            totalKwh = targetKwh,
+            totalKwh = paidKwhNeeded + fbeUnitsKwh,
             averageRateCentsPerKwh = averageRateCents,
             effectiveRandPerKwh = effectiveRandPerKwh,
             blockBreakdown = blockBreakdowns,
@@ -304,9 +314,13 @@ object CalculationEngine {
         meterMultiplier: Double = 1.0,
         billingDays: Int = 30
     ): CalculationResult {
-        val consumptionKwh = ((closingReading - openingReading) * meterMultiplier).coerceAtLeast(0.0)
+        val safeOpeningReading = openingReading.finiteOrZero().coerceAtLeast(0.0)
+        val safeClosingReading = closingReading.finiteOrZero().coerceAtLeast(0.0)
+        val safeMultiplier = meterMultiplier.finiteOrZero().coerceAtLeast(0.0)
+        val safeBillingDays = billingDays.coerceAtLeast(1)
+        val consumptionKwh = ((safeClosingReading - safeOpeningReading) * safeMultiplier).coerceAtLeast(0.0)
         val stepExplanations = mutableListOf<String>()
-        stepExplanations.add("1. Billing Period: $billingDays days | Meter Reading Delta: ${"%.2f".format(closingReading - openingReading)} x $meterMultiplier = ${"%.2f".format(consumptionKwh)} kWh")
+        stepExplanations.add("1. Billing Period: $safeBillingDays days | Meter Reading Delta: ${"%.2f".format(safeClosingReading - safeOpeningReading)} x $safeMultiplier = ${"%.2f".format(consumptionKwh)} kWh")
 
         // Energy Cost across blocks
         var remainingKwh = consumptionKwh
@@ -362,13 +376,13 @@ object CalculationEngine {
         stepExplanations.add("2. Energy Charges Across Tariff Blocks: R${"%.2f".format(grossEnergyCostRand)}")
 
         val fixedNetworkCharge = if (profile.dailyFixedChargeRand > 0.0) {
-            billingDays * profile.dailyFixedChargeRand
+            safeBillingDays * profile.dailyFixedChargeRand
         } else {
-            (billingDays / 30.0) * (profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand)
+            (safeBillingDays / 30.0) * (profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand)
         }
 
         if (fixedNetworkCharge > 0.0) {
-            stepExplanations.add("3. Fixed Network Access & Service Charge ($billingDays days): R${"%.2f".format(fixedNetworkCharge)}")
+            stepExplanations.add("3. Fixed Network Access & Service Charge ($safeBillingDays days): R${"%.2f".format(fixedNetworkCharge)}")
         } else {
             stepExplanations.add("3. Fixed Network Charges: R0.00")
         }
@@ -379,7 +393,7 @@ object CalculationEngine {
         val effectiveRandPerKwh = if (consumptionKwh > 0.0) totalGrossBillRand / consumptionKwh else 0.0
         stepExplanations.add("5. Effective All-In Price per kWh: R${"%.4f".format(effectiveRandPerKwh)}/kWh")
 
-        val vatAmount = totalGrossBillRand * (profile.vatRatePercent / (100.0 + profile.vatRatePercent))
+        val vatAmount = vatFromGross(totalGrossBillRand, profile)
 
         return CalculationResult(
             mode = CalculationMode.CONVENTIONAL_BILL,
@@ -410,13 +424,14 @@ object CalculationEngine {
         actualUnits: Double,
         expectedResult: CalculationResult
     ): ReconciliationResult {
-        val diffKwh = actualUnits - expectedResult.totalKwh
+        val safeActualUnits = actualUnits.finiteOrZero().coerceAtLeast(0.0)
+        val diffKwh = safeActualUnits - expectedResult.totalKwh
         val percentage = if (expectedResult.totalKwh > 0) (abs(diffKwh) / expectedResult.totalKwh) * 100.0 else 0.0
         val isWithinTolerance = percentage <= 2.0
 
         val causes = mutableListOf<String>()
 
-        if (actualUnits < expectedResult.totalKwh) {
+        if (safeActualUnits < expectedResult.totalKwh) {
             if (expectedResult.fixedChargeDeductedRand > 0) {
                 causes.add("Fixed Network Access Charge: Your token receipt deducted R${"%.2f".format(expectedResult.fixedChargeDeductedRand)} for monthly access fees before converting remaining money to kWh.")
             }
@@ -433,16 +448,16 @@ object CalculationEngine {
 
         val primaryDiagnosis = when {
             isWithinTolerance -> "Units Match Expected Calculation (Within 2% Rounding Tolerance)"
-            actualUnits < expectedResult.totalKwh && expectedResult.fixedChargeDeductedRand > 0 ->
+            safeActualUnits < expectedResult.totalKwh && expectedResult.fixedChargeDeductedRand > 0 ->
                 "Variance Caused by Fixed Charge Recovery (R${"%.2f".format(expectedResult.fixedChargeDeductedRand)})"
-            actualUnits < expectedResult.totalKwh ->
+            safeActualUnits < expectedResult.totalKwh ->
                 "Token Variance Detected (-${"%.1f".format(abs(diffKwh))} kWh). Likely Block Threshold or Arrears Recovery."
             else ->
                 "Higher Units Received (+${"%.1f".format(diffKwh)} kWh). Likely Unclaimed FBE or Subsidised Rate Applied."
         }
 
         return ReconciliationResult(
-            actualUnitsReceived = actualUnits,
+            actualUnitsReceived = safeActualUnits,
             expectedUnits = expectedResult.totalKwh,
             differenceKwh = diffKwh,
             percentageDiff = percentage,
@@ -451,4 +466,36 @@ object CalculationEngine {
             isWithinNormalTolerance = isWithinTolerance
         )
     }
+
+    private fun fixedChargeForPurchase(
+        profile: TariffProfile,
+        isFirstPurchaseOfMonth: Boolean,
+        daysSinceLastPurchase: Int
+    ): Double = when {
+        profile.dailyFixedChargeRand > 0.0 && daysSinceLastPurchase > 0 ->
+            daysSinceLastPurchase * profile.dailyFixedChargeRand
+        isFirstPurchaseOfMonth -> profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand
+        else -> 0.0
+    }
+
+    private fun isFbeAvailableForPurchase(
+        profile: TariffProfile,
+        isIndigentEligible: Boolean,
+        hasClaimedFbeThisMonth: Boolean,
+        isFirstPurchaseOfMonth: Boolean,
+        unitsAlreadyAllocatedThisMonth: Double
+    ): Boolean {
+        val fbe = profile.fbeConfig
+        val meetsRegistrationRule = !fbe.indigentRegistrationRequired || isIndigentEligible
+        val belowUsageCap = fbe.monthlyUsageCapKwh?.let { unitsAlreadyAllocatedThisMonth < it } ?: true
+        return fbe.isAvailable && meetsRegistrationRule && belowUsageCap && !hasClaimedFbeThisMonth && isFirstPurchaseOfMonth
+    }
+
+    private fun vatFromGross(grossAmountRand: Double, profile: TariffProfile): Double = if (profile.vatInclusiveRates) {
+        grossAmountRand * (profile.vatRatePercent / (100.0 + profile.vatRatePercent))
+    } else {
+        grossAmountRand * (profile.vatRatePercent / 100.0)
+    }
+
+    private fun Double.finiteOrZero(): Double = if (isFinite()) this else 0.0
 }

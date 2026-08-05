@@ -27,6 +27,7 @@ import com.example.smartelectricity.ui.screens.home.HomeScreen
 import com.example.smartelectricity.ui.screens.households.HouseholdsScreen
 import com.example.smartelectricity.ui.screens.reconcile.ReconciliationScreen
 import com.example.smartelectricity.ui.screens.result.ResultScreen
+import com.example.smartelectricity.ui.screens.tools.SmartToolsScreen
 import com.example.smartelectricity.ui.screens.weekly.WeeklyTrackingScreen
 import com.example.ui.theme.SmartElectricityTheme
 
@@ -59,88 +60,21 @@ fun MainAppScreen(
 
     val currentRoute = navBackStackEntry?.destination?.route ?: "home"
 
-    val showBottomBar = currentRoute in listOf("home", "households", "history", "concepts", "alerts")
+    val showBottomBar = currentRoute in listOf("home", "households", "tools", "budget_forecast", "history", "concepts", "alerts")
 
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(
-                    windowInsets = WindowInsets.navigationBars
-                ) {
-                    NavigationBarItem(
-                        selected = currentRoute == "home",
-                        onClick = {
-                            navController.navigate("home") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home") }
-                    )
-
-                    NavigationBarItem(
-                        selected = currentRoute == "households",
-                        onClick = {
-                            navController.navigate("households") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(Icons.Default.HomeWork, contentDescription = "Households") },
-                        label = { Text("Households") }
-                    )
-
-                    NavigationBarItem(
-                        selected = currentRoute == "history",
-                        onClick = {
-                            navController.navigate("history") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(Icons.Default.History, contentDescription = "History") },
-                        label = { Text("History") }
-                    )
-
-                    NavigationBarItem(
-                        selected = currentRoute == "concepts",
-                        onClick = {
-                            navController.navigate("concepts") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(Icons.Default.MenuBook, contentDescription = "Education") },
-                        label = { Text("Education") }
-                    )
-
-                    NavigationBarItem(
-                        selected = currentRoute == "alerts",
-                        onClick = {
-                            navController.navigate("alerts") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = {
-                            val unreadCount = alertsList.count { !it.isRead }
-                            if (unreadCount > 0) {
-                                BadgedBox(badge = { Badge { Text("$unreadCount") } }) {
-                                    Icon(Icons.Default.Notifications, contentDescription = "Alerts")
-                                }
-                            } else {
-                                Icon(Icons.Default.Notifications, contentDescription = "Alerts")
-                            }
-                        },
-                        label = { Text("Alerts") }
-                    )
-                }
+                PremiumBottomNavigation(
+                    currentRoute = currentRoute,
+                    onNavigate = { route ->
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
         }
     ) { paddingValues ->
@@ -166,7 +100,32 @@ fun MainAppScreen(
                     onOpenReconcile = { navController.navigate("reconcile") },
                     onOpenFbeGuide = { navController.navigate("fbe_calculator") },
                     onOpenAlerts = { navController.navigate("alerts") },
-                    onOpenAdmin = { navController.navigate("admin") }
+                    onOpenAdmin = { navController.navigate("admin") },
+                    onOpenTools = { navController.navigate("tools") },
+                    onOpenBudgetForecast = { navController.navigate("budget_forecast") },
+                    onOpenHouseholds = { navController.navigate("households") },
+                    onOpenConcepts = { navController.navigate("concepts") }
+                )
+            }
+
+            composable("tools") {
+                SmartToolsScreen(
+                    profile = state.selectedProfile,
+                    currentSpentRand = monthlySpendingTotal,
+                    budgetLimitRand = state.monthlyBudgetLimitRand,
+                    onUpdateBudgetLimit = { viewModel.setMonthlyBudgetLimit(it) },
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("budget_forecast") {
+                SmartToolsScreen(
+                    profile = state.selectedProfile,
+                    currentSpentRand = monthlySpendingTotal,
+                    budgetLimitRand = state.monthlyBudgetLimitRand,
+                    onUpdateBudgetLimit = { viewModel.setMonthlyBudgetLimit(it) },
+                    onNavigateBack = { navController.popBackStack() },
+                    initialTool = 1
                 )
             }
 
@@ -197,6 +156,9 @@ fun MainAppScreen(
                     onSetFirstPurchase = { viewModel.setFirstPurchaseOfMonth(it) },
                     onSetHasClaimedFbe = { viewModel.setHasClaimedFbeThisMonth(it) },
                     onSetIsIndigent = { viewModel.setIsIndigentRegistered(it) },
+                    onSetUnitsAlreadyAllocated = { viewModel.setUnitsAlreadyAllocatedThisMonthInput(it) },
+                    onSetDaysSinceLastPurchase = { viewModel.setDaysSinceLastPurchaseInput(it) },
+                    onSetArrears = { viewModel.setArrearsInput(it) },
                     onRunCalculation = { viewModel.runCalculation() },
                     onCalculationDone = { navController.navigate("result") },
                     onBackToHome = { navController.popBackStack() }
@@ -255,6 +217,61 @@ fun MainAppScreen(
             composable("admin") {
                 AdminEvidenceScreen(
                     onBack = { navController.popBackStack() }
+                )
+            }
+        }
+    }
+}
+
+private data class BottomDestination(
+    val route: String,
+    val label: String,
+    val selectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    val unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
+private val bottomDestinations = listOf(
+    BottomDestination("home", "Home", Icons.Default.Home, Icons.Default.Home),
+    BottomDestination("households", "Homes", Icons.Default.HomeWork, Icons.Default.HomeWork),
+    BottomDestination("tools", "Smart tools", Icons.Default.AutoAwesome, Icons.Default.AutoAwesome),
+    BottomDestination("history", "Activity", Icons.Default.History, Icons.Default.History)
+)
+
+@Composable
+private fun PremiumBottomNavigation(
+    currentRoute: String,
+    onNavigate: (String) -> Unit
+) {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        NavigationBar(
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            windowInsets = WindowInsets.navigationBars,
+        ) {
+            bottomDestinations.forEach { destination ->
+                val selected = currentRoute == destination.route ||
+                    (destination.route == "tools" && currentRoute == "budget_forecast")
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = { onNavigate(destination.route) },
+                    icon = {
+                        Icon(
+                            if (selected) destination.selectedIcon else destination.unselectedIcon,
+                            contentDescription = destination.label
+                        )
+                    },
+                    label = {
+                        Text(
+                            destination.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 )
             }
         }

@@ -97,6 +97,7 @@ data class TariffProfileEntity(
     val compatibleMeterTypesCsv: String = "PREPAID,SMART",
     val monthlyFixedChargeRand: Double = 0.0,
     val monthlyServiceFeeRand: Double = 0.0,
+    val dailyFixedChargeRand: Double = 0.0,
     val vatRatePercent: Double = 15.0,
     val vatInclusiveRates: Boolean = true,
     val fbeAvailable: Boolean = true,
@@ -131,6 +132,5 @@ data class TariffBlockEntity(
     val maxKwh: Double?,
     val rateCentsPerKwh: Double
 )
-
 
 

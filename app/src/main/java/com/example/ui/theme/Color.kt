@@ -3,29 +3,28 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Premium Light Electricity Color Palette
-val PrimarySkyBlue = Color(0xFF0284C7)
+val PrimarySkyBlue = Color(0xFF1769FF)
 val OnPrimaryWhite = Color.White
-val PrimarySkyContainer = Color(0xFFE0F2FE)
-val OnPrimarySkyContainer = Color(0xFF0369A1)
+val PrimarySkyContainer = Color(0xFFE7EEFF)
+val OnPrimarySkyContainer = Color(0xFF003DAF)
 
-val SecondaryEmerald = Color(0xFF059669)
-val SecondaryEmeraldContainer = Color(0xFFD1FAE5)
-val OnSecondaryEmeraldContainer = Color(0xFF065F46)
+val SecondaryEmerald = Color(0xFF008C72)
+val SecondaryEmeraldContainer = Color(0xFFD5F7EC)
+val OnSecondaryEmeraldContainer = Color(0xFF004D3E)
 
-val TertiaryIndigo = Color(0xFF4F46E5)
-val TertiaryIndigoContainer = Color(0xFFEEF2FF)
-val OnTertiaryIndigoContainer = Color(0xFF3730A3)
+val TertiaryIndigo = Color(0xFF7B42F6)
+val TertiaryIndigoContainer = Color(0xFFF0E8FF)
+val OnTertiaryIndigoContainer = Color(0xFF40149B)
 
-val LightBackground = Color(0xFFF8FAFC)
+val LightBackground = Color(0xFFF6F8FC)
 val LightSurface = Color(0xFFFFFFFF)
-val SurfaceVariantSlate = Color(0xFFF1F5F9)
-val OnSurfaceDark = Color(0xFF0F172A)
-val OnSurfaceVariantMuted = Color(0xFF475569)
-val OutlineSoftBorder = Color(0xFFE2E8F0)
+val SurfaceVariantSlate = Color(0xFFEEF2F8)
+val OnSurfaceDark = Color(0xFF101828)
+val OnSurfaceVariantMuted = Color(0xFF526176)
+val OutlineSoftBorder = Color(0xFFDDE4EF)
 
-val DarkBackground = Color(0xFF0F172A)
-val DarkSurface = Color(0xFF1E293B)
-val DarkSurfaceVariant = Color(0xFF334155)
+val DarkBackground = Color(0xFF07111F)
+val DarkSurface = Color(0xFF101D30)
+val DarkSurfaceVariant = Color(0xFF1A2A42)
 val DarkOnSurface = Color(0xFFF8FAFC)
 val DarkOnSurfaceVariant = Color(0xFF94A3B8)
-

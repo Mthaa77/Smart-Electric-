@@ -39,6 +39,9 @@ fun CalculatorWizardScreen(
     onSetFirstPurchase: (Boolean) -> Unit,
     onSetHasClaimedFbe: (Boolean) -> Unit,
     onSetIsIndigent: (Boolean) -> Unit,
+    onSetUnitsAlreadyAllocated: (String) -> Unit,
+    onSetDaysSinceLastPurchase: (String) -> Unit,
+    onSetArrears: (String) -> Unit,
     onRunCalculation: () -> Unit,
     onCalculationDone: () -> Unit,
     onBackToHome: () -> Unit
@@ -50,8 +53,8 @@ fun CalculatorWizardScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Guided Calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Step $step of 5: ${getStepTitle(step)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Text("Guided calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        Text("Step $step of 5 · ${getStepTitle(step)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 navigationIcon = {
@@ -59,24 +62,6 @@ fun CalculatorWizardScreen(
                         if (step > 1) step-- else onBackToHome()
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    Row(
-                        modifier = Modifier.padding(end = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(
-                            selected = state.calculationMode == CalculationMode.RAND_TO_KWH,
-                            onClick = { onSetMode(CalculationMode.RAND_TO_KWH) },
-                            label = { Text("Rand → kWh") }
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        FilterChip(
-                            selected = state.calculationMode == CalculationMode.KWH_TO_RAND,
-                            onClick = { onSetMode(CalculationMode.KWH_TO_RAND) },
-                            label = { Text("kWh → Rand") }
-                        )
                     }
                 }
             )
@@ -96,7 +81,7 @@ fun CalculatorWizardScreen(
                     if (step > 1) {
                         OutlinedButton(
                             onClick = { step-- },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Text("Previous")
                         }
@@ -107,7 +92,7 @@ fun CalculatorWizardScreen(
                     if (step < 5) {
                         Button(
                             onClick = { step++ },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Text("Next Step")
                             Spacer(modifier = Modifier.width(4.dp))
@@ -119,7 +104,7 @@ fun CalculatorWizardScreen(
                                 onRunCalculation()
                                 onCalculationDone()
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             )
@@ -133,41 +118,73 @@ fun CalculatorWizardScreen(
             }
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            when (step) {
-                1 -> Step1SupplierSelection(
-                    state = state,
-                    onSelectDistributor = { dist ->
-                        onSelectDistributor(dist)
-                        step = 2
-                    }
+            LinearProgressIndicator(
+                progress = { step / 5f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = state.calculationMode == CalculationMode.RAND_TO_KWH,
+                    onClick = { onSetMode(CalculationMode.RAND_TO_KWH) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    label = { Text("Rand → kWh", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.Payments, null, Modifier.size(16.dp)) }
                 )
-                2 -> Step2ProfileSelection(
-                    state = state,
-                    onSelectProfile = { prof ->
-                        onSelectProfile(prof)
-                        step = 3
-                    }
+                SegmentedButton(
+                    selected = state.calculationMode == CalculationMode.KWH_TO_RAND,
+                    onClick = { onSetMode(CalculationMode.KWH_TO_RAND) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    label = { Text("kWh → Rand", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.ElectricBolt, null, Modifier.size(16.dp)) }
                 )
-                3 -> Step3AmountEntry(
-                    state = state,
-                    onSetAmount = onSetAmount,
-                    onSetFirstPurchase = onSetFirstPurchase,
-                    onSetHasClaimedFbe = onSetHasClaimedFbe
-                )
-                4 -> Step4FbeQuestions(
-                    state = state,
-                    onSetIsIndigent = onSetIsIndigent
-                )
-                5 -> Step5ReviewAssumptions(
-                    state = state,
-                    onEditStep = { step = it }
-                )
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                when (step) {
+                    1 -> Step1SupplierSelection(
+                        state = state,
+                        onSelectDistributor = { dist ->
+                            onSelectDistributor(dist)
+                            step = 2
+                        }
+                    )
+                    2 -> Step2ProfileSelection(
+                        state = state,
+                        onSelectProfile = { prof ->
+                            onSelectProfile(prof)
+                            step = 3
+                        }
+                    )
+                    3 -> Step3AmountEntry(
+                        state = state,
+                        onSetAmount = onSetAmount,
+                        onSetFirstPurchase = onSetFirstPurchase,
+                        onSetHasClaimedFbe = onSetHasClaimedFbe,
+                        onSetUnitsAlreadyAllocated = onSetUnitsAlreadyAllocated,
+                        onSetDaysSinceLastPurchase = onSetDaysSinceLastPurchase,
+                        onSetArrears = onSetArrears
+                    )
+                    4 -> Step4FbeQuestions(
+                        state = state,
+                        onSetIsIndigent = onSetIsIndigent
+                    )
+                    5 -> Step5ReviewAssumptions(
+                        state = state,
+                        onEditStep = { step = it }
+                    )
+                }
             }
         }
     }
@@ -331,7 +348,10 @@ private fun Step3AmountEntry(
     state: CalculatorUiState,
     onSetAmount: (String) -> Unit,
     onSetFirstPurchase: (Boolean) -> Unit,
-    onSetHasClaimedFbe: (Boolean) -> Unit
+    onSetHasClaimedFbe: (Boolean) -> Unit,
+    onSetUnitsAlreadyAllocated: (String) -> Unit,
+    onSetDaysSinceLastPurchase: (String) -> Unit,
+    onSetArrears: (String) -> Unit
 ) {
     val isRand = state.calculationMode == CalculationMode.RAND_TO_KWH
 
@@ -418,6 +438,65 @@ private fun Step3AmountEntry(
                 }
             }
         }
+
+        item {
+            var showAdvanced by remember { mutableStateOf(false) }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAdvanced = !showAdvanced },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Advanced purchase context", fontWeight = FontWeight.Bold)
+                            Text("Use receipt details for a closer match.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+                    }
+
+                    AnimatedVisibility(showAdvanced) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                value = state.unitsAlreadyAllocatedThisMonthInputStr,
+                                onValueChange = onSetUnitsAlreadyAllocated,
+                                label = { Text("Units already bought this month") },
+                                suffix = { Text("kWh") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            if (state.selectedProfile.dailyFixedChargeRand > 0.0) {
+                                OutlinedTextField(
+                                    value = state.daysSinceLastPurchaseInputStr,
+                                    onValueChange = onSetDaysSinceLastPurchase,
+                                    label = { Text("Days since last purchase / billing") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                            OutlinedTextField(
+                                value = state.arrearsInputStr,
+                                onValueChange = onSetArrears,
+                                label = { Text("Known authorised arrears recovery") },
+                                prefix = { Text("R ") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                supportingText = { Text("Leave at R0 unless it appears on your municipal or vending receipt.") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -458,7 +537,12 @@ private fun Step4FbeQuestions(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Registered as Indigent with Municipality?", fontWeight = FontWeight.Bold)
-                        Text("Or municipal property valuation is below R150,000", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = fbeConfig.propertyValuationCapRand?.let { "Eligibility is confirmed by your municipality; its published property cap is R${"%.0f".format(it)}." }
+                                ?: "Eligibility is confirmed by your municipality for this tariff.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Checkbox(
                         checked = state.isIndigentRegistered,
