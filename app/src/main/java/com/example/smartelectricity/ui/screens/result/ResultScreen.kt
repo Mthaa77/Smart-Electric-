@@ -32,6 +32,7 @@ import com.example.smartelectricity.ui.components.premiumDepth
 @Composable
 fun ResultScreen(
     result: CalculationResult?,
+    hasActiveHousehold: Boolean,
     onOpenReconcile: () -> Unit,
     onRecordPurchase: () -> Unit,
     purchaseSaveMessage: String?,
@@ -52,7 +53,7 @@ fun ResultScreen(
         return
     }
 
-    var showMathBreakdown by remember { mutableStateOf(true) }
+    var showMathBreakdown by remember { mutableStateOf(false) }
     var showSourceInspector by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -143,7 +144,7 @@ fun ResultScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
-                        } else {
+                        } else if (result.mode == CalculationMode.KWH_TO_RAND) {
                             Text(
                                 text = "R${"%.2f".format(result.grossPurchaseRand)}",
                                 style = MaterialTheme.typography.displayMedium,
@@ -152,6 +153,18 @@ fun ResultScreen(
                             )
                             Text(
                                 text = "Total Estimated Purchase Required for ${"%.1f".format(result.totalKwh)} kWh",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        } else {
+                            Text(
+                                text = "R${"%.2f".format(result.grossPurchaseRand)}",
+                                style = MaterialTheme.typography.displayMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Estimated bill for ${"%.1f".format(result.totalKwh)} kWh used",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
@@ -191,7 +204,7 @@ fun ResultScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text("Money & Units Allocation Breakdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Where your money and units go", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
                         AllocationRow(label = "Gross Purchase Amount", value = "R${"%.2f".format(result.grossPurchaseRand)}")
                         if (result.fixedChargeDeductedRand > 0) {
@@ -250,7 +263,7 @@ fun ResultScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Step-by-Step Calculation Math", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("How this was calculated", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             TextButton(onClick = { showMathBreakdown = !showMathBreakdown }) {
                                 Text(if (showMathBreakdown) "Hide" else "Show")
                             }
@@ -338,7 +351,13 @@ fun ResultScreen(
                         ) {
                             Icon(Icons.Default.AddTask, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (isPurchaseRecorded) "Purchase recorded" else "Record purchase & update monthly block")
+                            Text(
+                                when {
+                                    isPurchaseRecorded -> "Purchase recorded"
+                                    !hasActiveHousehold -> "Save home & record purchase"
+                                    else -> "Record purchase & update monthly block"
+                                }
+                            )
                         }
                     }
 
@@ -350,31 +369,35 @@ fun ResultScreen(
                         )
                     }
 
-                    Button(
-                        onClick = onOpenReconcile,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .premiumDepth(
-                                shape = RoundedCornerShape(12.dp),
-                                elevation = 7.dp,
-                                accentColor = MaterialTheme.colorScheme.secondary
-                            ),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                    ) {
-                        Icon(Icons.Default.Receipt, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Why did I get fewer units? (Reconcile Token)")
+                    if (result.mode == CalculationMode.RAND_TO_KWH) {
+                        Button(
+                            onClick = onOpenReconcile,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .premiumDepth(
+                                    shape = RoundedCornerShape(12.dp),
+                                    elevation = 7.dp,
+                                    accentColor = MaterialTheme.colorScheme.secondary
+                                ),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Icon(Icons.Default.Receipt, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Compare with my token receipt")
+                        }
                     }
 
-                    OutlinedButton(
-                        onClick = onSaveHouseholdClick,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.BookmarkBorder, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Save to Household Profile")
+                    if (!hasActiveHousehold && result.mode != CalculationMode.RAND_TO_KWH) {
+                        OutlinedButton(
+                            onClick = onSaveHouseholdClick,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.BookmarkBorder, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Save this home")
+                        }
                     }
                 }
             }

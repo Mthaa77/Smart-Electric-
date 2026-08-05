@@ -21,7 +21,6 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.example.smartelectricity.ui.AppViewModel
 import com.example.smartelectricity.ui.components.LiquidGlassPanel
-import com.example.smartelectricity.ui.screens.admin.AdminEvidenceScreen
 import com.example.smartelectricity.ui.screens.alerts.AlertsScreen
 import com.example.smartelectricity.ui.screens.calculator.CalculatorWizardScreen
 import com.example.smartelectricity.ui.screens.concepts.ConceptsScreen
@@ -29,10 +28,13 @@ import com.example.smartelectricity.ui.screens.fbe.FbeCalculatorScreen
 import com.example.smartelectricity.ui.screens.history.HistoryScreen
 import com.example.smartelectricity.ui.screens.home.HomeScreen
 import com.example.smartelectricity.ui.screens.households.HouseholdsScreen
+import com.example.smartelectricity.ui.screens.more.MoreScreen
+import com.example.smartelectricity.ui.screens.onboarding.HouseholdSetupScreen
 import com.example.smartelectricity.ui.screens.reconcile.ReconciliationScreen
 import com.example.smartelectricity.ui.screens.result.ResultScreen
+import com.example.smartelectricity.ui.screens.sources.TariffSourcesScreen
 import com.example.smartelectricity.ui.screens.tools.SmartToolsScreen
-import com.example.smartelectricity.ui.screens.weekly.WeeklyTrackingScreen
+import com.example.smartelectricity.ui.screens.tracker.TrackerScreen
 import com.example.ui.theme.SmartElectricityTheme
 
 
@@ -58,14 +60,14 @@ fun MainAppScreen(
     val historyList by viewModel.calculationHistory.collectAsStateWithLifecycle()
     val alertsList by viewModel.tariffAlerts.collectAsStateWithLifecycle()
     val monthlySpendingTotal by viewModel.monthlySpendingTotal.collectAsStateWithLifecycle()
-    val weeklySpends by viewModel.weeklySpends.collectAsStateWithLifecycle()
     val activeLedger by viewModel.activeLedger.collectAsStateWithLifecycle()
+    val activePurchases by viewModel.activePurchases.collectAsStateWithLifecycle()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
     val currentRoute = navBackStackEntry?.destination?.route ?: "home"
 
-    val showBottomBar = currentRoute in listOf("home", "households", "tools", "budget_forecast", "history", "concepts", "alerts")
+    val showBottomBar = currentRoute in listOf("home", "tracker", "tools", "more")
 
     Scaffold(
         bottomBar = {
@@ -81,38 +83,153 @@ fun MainAppScreen(
                     }
                 )
             }
-        }
+        },
+        floatingActionButton = {
+            if (showBottomBar) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        viewModel.setCalculationMode(com.example.smartelectricity.data.model.CalculationMode.RAND_TO_KWH)
+                        navController.navigate("calculator")
+                    },
+                    icon = { Icon(Icons.Default.Calculate, contentDescription = null) },
+                    text = { Text("Calculate", fontWeight = FontWeight.Bold) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+        },
+        floatingActionButtonPosition = FabPosition.Center
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = "home",
+            startDestination = if (state.hasCompletedOnboarding) "home" else "onboarding",
             modifier = Modifier.padding(paddingValues)
         ) {
+            composable("onboarding") {
+                HouseholdSetupScreen(
+                    state = state,
+                    isFirstRun = true,
+                    onSelectDistributor = viewModel::selectDistributor,
+                    onSelectProfile = viewModel::selectProfile,
+                    onSetMeterType = viewModel::setMeterType,
+                    onSetIndigent = viewModel::setIsIndigentRegistered,
+                    onSetBudget = viewModel::setMonthlyBudgetLimit,
+                    onSaveHousehold = viewModel::saveHousehold,
+                    onComplete = {
+                        viewModel.completeOnboarding()
+                        navController.navigate("home") {
+                            popUpTo("onboarding") { inclusive = true }
+                        }
+                    },
+                    onSkip = {
+                        viewModel.completeOnboarding()
+                        navController.navigate("home") {
+                            popUpTo("onboarding") { inclusive = true }
+                        }
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("household_setup") {
+                HouseholdSetupScreen(
+                    state = state,
+                    isFirstRun = false,
+                    onSelectDistributor = viewModel::selectDistributor,
+                    onSelectProfile = viewModel::selectProfile,
+                    onSetMeterType = viewModel::setMeterType,
+                    onSetIndigent = viewModel::setIsIndigentRegistered,
+                    onSetBudget = viewModel::setMonthlyBudgetLimit,
+                    onSaveHousehold = viewModel::saveHousehold,
+                    onComplete = { navController.navigate("home") },
+                    onSkip = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("household_setup_result") {
+                HouseholdSetupScreen(
+                    state = state,
+                    isFirstRun = false,
+                    onSelectDistributor = viewModel::selectDistributor,
+                    onSelectProfile = viewModel::selectProfile,
+                    onSetMeterType = viewModel::setMeterType,
+                    onSetIndigent = viewModel::setIsIndigentRegistered,
+                    onSetBudget = viewModel::setMonthlyBudgetLimit,
+                    onSaveHousehold = viewModel::saveHousehold,
+                    onComplete = {
+                        navController.navigate("result") {
+                            popUpTo("result") { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
+                    onSkip = {
+                        viewModel.cancelPendingPurchaseRecord()
+                        navController.popBackStack()
+                    },
+                    onBack = {
+                        viewModel.cancelPendingPurchaseRecord()
+                        navController.popBackStack()
+                    }
+                )
+            }
+
             composable("home") {
                 HomeScreen(
                     currentSpentRand = monthlySpendingTotal,
                     budgetLimitRand = state.monthlyBudgetLimitRand,
-                    activeHouseholdName = state.activeHousehold?.nickname,
+                    activeHousehold = state.activeHousehold,
+                    activeDistributor = state.selectedDistributor,
                     activeProfile = state.selectedProfile,
                     activeLedger = activeLedger,
                     onUpdateBudgetLimit = { viewModel.setMonthlyBudgetLimit(it) },
-                    onOpenWeeklyTracker = { navController.navigate("weekly_tracking") },
                     onStartCalculator = { mode ->
                         viewModel.setCalculationMode(mode)
                         navController.navigate("calculator")
                     },
-                    onSelectDistributor = { dist ->
-                        viewModel.selectDistributor(dist)
-                        navController.navigate("calculator")
+                    onRunQuickEstimate = { amount, distributor ->
+                        if (state.selectedDistributor.id != distributor.id) {
+                            viewModel.selectDistributor(distributor)
+                        }
+                        viewModel.setCalculationMode(com.example.smartelectricity.data.model.CalculationMode.RAND_TO_KWH)
+                        viewModel.setAmountInput(amount)
+                        viewModel.runCalculation()
+                        navController.navigate("result")
                     },
-                    onOpenReconcile = { navController.navigate("reconcile") },
-                    onOpenFbeGuide = { navController.navigate("fbe_calculator") },
-                    onOpenAlerts = { navController.navigate("alerts") },
-                    onOpenAdmin = { navController.navigate("admin") },
                     onOpenTools = { navController.navigate("tools") },
                     onOpenBudgetForecast = { navController.navigate("budget_forecast") },
-                    onOpenHouseholds = { navController.navigate("households") },
-                    onOpenConcepts = { navController.navigate("concepts") }
+                    onOpenHouseholds = {
+                        navController.navigate(if (households.isEmpty()) "household_setup" else "households")
+                    }
+                )
+            }
+
+            composable("tracker") {
+                TrackerScreen(
+                    householdName = state.activeHousehold?.nickname,
+                    profile = state.selectedProfile,
+                    ledger = activeLedger,
+                    purchases = activePurchases,
+                    budgetLimitRand = state.monthlyBudgetLimitRand,
+                    onCalculate = {
+                        viewModel.setCalculationMode(com.example.smartelectricity.data.model.CalculationMode.RAND_TO_KWH)
+                        navController.navigate("calculator")
+                    },
+                    onOpenHouseholds = { navController.navigate(if (households.isEmpty()) "household_setup" else "households") }
+                )
+            }
+
+            composable("more") {
+                MoreScreen(
+                    activeHouseholdName = state.activeHousehold?.nickname,
+                    activeProfile = state.selectedProfile,
+                    unreadAlertCount = alertsList.count { !it.isRead },
+                    onOpenHouseholds = { navController.navigate(if (households.isEmpty()) "household_setup" else "households") },
+                    onOpenTariffSources = { navController.navigate("tariff_sources") },
+                    onOpenFbe = { navController.navigate("fbe_calculator") },
+                    onOpenConcepts = { navController.navigate("concepts") },
+                    onOpenAlerts = { navController.navigate("alerts") },
+                    onOpenHistory = { navController.navigate("history") }
                 )
             }
 
@@ -122,7 +239,8 @@ fun MainAppScreen(
                     currentSpentRand = monthlySpendingTotal,
                     budgetLimitRand = state.monthlyBudgetLimitRand,
                     onUpdateBudgetLimit = { viewModel.setMonthlyBudgetLimit(it) },
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    showBack = false
                 )
             }
 
@@ -143,17 +261,6 @@ fun MainAppScreen(
                 )
             }
 
-            composable("weekly_tracking") {
-                WeeklyTrackingScreen(
-                    weeklySpends = weeklySpends,
-                    monthlyBudgetLimitRand = state.monthlyBudgetLimitRand,
-                    onAddWeeklySpend = { weekLabel, amount, notes -> viewModel.addWeeklySpend(weekLabel, amount, notes) },
-                    onDeleteWeeklySpend = { id -> viewModel.deleteWeeklySpend(id) },
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-
             composable("calculator") {
                 CalculatorWizardScreen(
                     state = state,
@@ -167,6 +274,9 @@ fun MainAppScreen(
                     onSetUnitsAlreadyAllocated = { viewModel.setUnitsAlreadyAllocatedThisMonthInput(it) },
                     onSetDaysSinceLastPurchase = { viewModel.setDaysSinceLastPurchaseInput(it) },
                     onSetArrears = { viewModel.setArrearsInput(it) },
+                    onSetOpeningReading = { viewModel.setOpeningReadingInput(it) },
+                    onSetClosingReading = { viewModel.setClosingReadingInput(it) },
+                    onSetBillingDays = { viewModel.setBillingDaysInput(it) },
                     onRunCalculation = { viewModel.runCalculation() },
                     onCalculationDone = { navController.navigate("result") },
                     onBackToHome = { navController.popBackStack() }
@@ -176,11 +286,19 @@ fun MainAppScreen(
             composable("result") {
                 ResultScreen(
                     result = state.activeResult,
+                    hasActiveHousehold = state.activeHousehold != null,
                     onOpenReconcile = { navController.navigate("reconcile") },
-                    onRecordPurchase = { viewModel.recordActivePurchase() },
+                    onRecordPurchase = {
+                        if (state.activeHousehold == null) {
+                            viewModel.recordActivePurchase()
+                            navController.navigate("household_setup_result")
+                        } else {
+                            viewModel.recordActivePurchase()
+                        }
+                    },
                     purchaseSaveMessage = state.purchaseSaveMessage,
                     isPurchaseRecorded = state.isActiveResultRecorded,
-                    onSaveHouseholdClick = { navController.navigate("households") },
+                    onSaveHouseholdClick = { navController.navigate("household_setup_result") },
                     onBackToHome = { navController.navigate("home") }
                 )
             }
@@ -198,10 +316,11 @@ fun MainAppScreen(
                 HouseholdsScreen(
                     households = households,
                     activeHousehold = state.activeHousehold,
-                    onSelectHousehold = { viewModel.selectHousehold(it) },
-                    onSaveHousehold = { name, suburb, propertyValue, averageKwh ->
-                        viewModel.saveHousehold(name, suburb, propertyValue, averageKwh)
+                    onSelectHousehold = {
+                        viewModel.selectHousehold(it)
+                        navController.popBackStack()
                     },
+                    onAddHousehold = { navController.navigate("household_setup") },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -227,11 +346,13 @@ fun MainAppScreen(
                 )
             }
 
-            composable("admin") {
-                AdminEvidenceScreen(
+            composable("tariff_sources") {
+                TariffSourcesScreen(
+                    distributors = state.availableDistributors,
                     onBack = { navController.popBackStack() }
                 )
             }
+
         }
     }
 }
@@ -245,9 +366,9 @@ private data class BottomDestination(
 
 private val bottomDestinations = listOf(
     BottomDestination("home", "Home", Icons.Default.Home, Icons.Default.Home),
-    BottomDestination("households", "Homes", Icons.Default.HomeWork, Icons.Default.HomeWork),
-    BottomDestination("tools", "Smart tools", Icons.Default.AutoAwesome, Icons.Default.AutoAwesome),
-    BottomDestination("history", "Activity", Icons.Default.History, Icons.Default.History)
+    BottomDestination("tracker", "Tracker", Icons.Default.QueryStats, Icons.Default.QueryStats),
+    BottomDestination("tools", "Tools", Icons.Default.AutoAwesome, Icons.Default.AutoAwesome),
+    BottomDestination("more", "More", Icons.Default.GridView, Icons.Default.GridView)
 )
 
 @Composable

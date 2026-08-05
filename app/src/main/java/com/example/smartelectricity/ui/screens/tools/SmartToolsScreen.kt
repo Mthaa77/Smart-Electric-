@@ -52,7 +52,8 @@ fun SmartToolsScreen(
     budgetLimitRand: Double,
     onUpdateBudgetLimit: (Double) -> Unit,
     onNavigateBack: () -> Unit,
-    initialTool: Int = 0
+    initialTool: Int = 0,
+    showBack: Boolean = true
 ) {
     var selectedTool by remember(initialTool) { mutableIntStateOf(initialTool.coerceIn(0, 1)) }
     val calendar = remember { Calendar.getInstance() }
@@ -73,8 +74,10 @@ fun SmartToolsScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    if (showBack) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(

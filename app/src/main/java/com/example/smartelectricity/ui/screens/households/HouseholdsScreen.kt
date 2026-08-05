@@ -5,19 +5,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.smartelectricity.data.db.HouseholdEntity
 import com.example.smartelectricity.data.repository.TariffRepository
 import com.example.smartelectricity.ui.components.LiquidGlassPanel
+import com.example.smartelectricity.ui.components.VerificationStatusBadge
 import com.example.smartelectricity.ui.components.premiumDepth
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,26 +25,25 @@ fun HouseholdsScreen(
     households: List<HouseholdEntity>,
     activeHousehold: HouseholdEntity?,
     onSelectHousehold: (HouseholdEntity) -> Unit,
-    onSaveHousehold: (String, String, Double, Double) -> Unit,
+    onAddHousehold: () -> Unit,
     onBack: () -> Unit
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
-    var nickname by remember { mutableStateOf("") }
-    var suburb by remember { mutableStateOf("") }
-    var propertyValue by remember { mutableStateOf("120000") }
-    var historicAverageKwh by remember { mutableStateOf("350") }
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Saved Households", fontWeight = FontWeight.Bold) },
+                title = {
+                    Column {
+                        Text("Homes and meters", fontWeight = FontWeight.Black)
+                        Text("Tap a home to make it active", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
+                    IconButton(onClick = onAddHousehold) {
                         Icon(Icons.Default.Add, contentDescription = "Add Household")
                     }
                 }
@@ -71,11 +69,11 @@ fun HouseholdsScreen(
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No Saved Households Yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Save your household tariff settings to track history and receive tariff alerts.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No homes saved yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Add a home to connect estimates, purchases, tariff blocks and updates.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
-                        onClick = { showAddDialog = true },
+                        onClick = onAddHousehold,
                         modifier = Modifier.premiumDepth(
                             shape = RoundedCornerShape(16.dp),
                             elevation = 9.dp,
@@ -115,9 +113,10 @@ fun HouseholdsScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(hh.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    if (isSelected) {
-                                        Badge { Text("Active") }
+                                    Text(hh.nickname, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        profile?.let { VerificationStatusBadge(it.verificationStatus) }
+                                        if (isSelected) Badge { Text("Active") }
                                     }
                                 }
 
@@ -131,66 +130,6 @@ fun HouseholdsScreen(
                 }
             }
 
-            if (showAddDialog) {
-                AlertDialog(
-                    onDismissRequest = { showAddDialog = false },
-                    title = { Text("Save Household Profile") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedTextField(
-                                value = nickname,
-                                onValueChange = { nickname = it },
-                                label = { Text("Household Name (e.g. Home, Rental)") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = suburb,
-                                onValueChange = { suburb = it },
-                                label = { Text("Suburb / Municipality") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = propertyValue,
-                                onValueChange = { propertyValue = it.filter { char -> char.isDigit() || char == '.' } },
-                                label = { Text("Municipal property value") },
-                                prefix = { Text("R ") },
-                                supportingText = { Text("Used only for tariff and FBE eligibility checks.") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = historicAverageKwh,
-                                onValueChange = { historicAverageKwh = it.filter { char -> char.isDigit() || char == '.' } },
-                                label = { Text("Historic average monthly use") },
-                                suffix = { Text("kWh") },
-                                supportingText = { Text("Find this on recent bills, or enter your best estimate.") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                onSaveHousehold(
-                                    nickname,
-                                    suburb,
-                                    propertyValue.toDoubleOrNull() ?: 0.0,
-                                    historicAverageKwh.toDoubleOrNull() ?: 0.0
-                                )
-                                showAddDialog = false
-                            }
-                        ) {
-                            Text("Save Profile")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showAddDialog = false }) {
-                            Text("Cancel")
-                        }
-                    }
-                )
-            }
         }
     }
 }
