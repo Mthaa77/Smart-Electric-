@@ -1,0 +1,6 @@
+{
+  "name": "Smart Electricity",
+  "description": "Estimate prepaid electricity units, tariff blocks, FBE allocations, and manage household electricity budgets across South African distributors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
