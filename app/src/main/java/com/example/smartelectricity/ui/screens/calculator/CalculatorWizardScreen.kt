@@ -25,8 +25,10 @@ import com.example.smartelectricity.data.model.MeterType
 import com.example.smartelectricity.data.model.TariffProfile
 import com.example.smartelectricity.data.model.isCalculationSupported
 import com.example.smartelectricity.ui.CalculatorUiState
+import com.example.smartelectricity.ui.components.LiquidGlassPanel
 import com.example.smartelectricity.ui.components.QuickAmountChips
 import com.example.smartelectricity.ui.components.VerificationStatusBadge
+import com.example.smartelectricity.ui.components.premiumDepth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,53 +69,72 @@ fun CalculatorWizardScreen(
             )
         },
         bottomBar = {
-            Surface(
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surface
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                LiquidGlassPanel(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    elevation = 16.dp
                 ) {
-                    if (step > 1) {
-                        OutlinedButton(
-                            onClick = { step-- },
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text("Previous")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (step > 1) {
+                            OutlinedButton(
+                                onClick = { step-- },
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text("Previous")
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.width(1.dp))
                         }
-                    } else {
-                        Spacer(modifier = Modifier.width(1.dp))
-                    }
 
-                    if (step < 5) {
-                        Button(
-                            onClick = { step++ },
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text("Next Step")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    } else {
-                        Button(
-                            onClick = {
-                                onRunCalculation()
-                                onCalculationDone()
-                            },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            enabled = state.selectedProfile.isCalculationSupported &&
-                                (state.amountInputStr.toDoubleOrNull() ?: 0.0) > 0.0
-                        ) {
-                            Icon(Icons.Default.Calculate, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Calculate Estimate", fontWeight = FontWeight.Bold)
+                        if (step < 5) {
+                            Button(
+                                onClick = { step++ },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.premiumDepth(
+                                    shape = RoundedCornerShape(16.dp),
+                                    elevation = 7.dp,
+                                    accentColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text("Next Step")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    onRunCalculation()
+                                    onCalculationDone()
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.premiumDepth(
+                                    shape = RoundedCornerShape(16.dp),
+                                    elevation = 8.dp,
+                                    accentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                enabled = state.selectedProfile.isCalculationSupported &&
+                                    (state.amountInputStr.toDoubleOrNull() ?: 0.0) > 0.0
+                            ) {
+                                Icon(Icons.Default.Calculate, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Calculate Estimate", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -241,6 +262,13 @@ private fun Step1SupplierSelection(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (isSelected) Modifier.premiumDepth(
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = 10.dp,
+                                accentColor = MaterialTheme.colorScheme.primary
+                            ) else Modifier
+                        )
                         .clickable { onSelectDistributor(dist) },
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -304,6 +332,13 @@ private fun Step2ProfileSelection(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (isSelected) Modifier.premiumDepth(
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = 10.dp,
+                                accentColor = MaterialTheme.colorScheme.primary
+                            ) else Modifier
+                        )
                         .clickable(enabled = isSupported) { onSelectProfile(prof) },
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(

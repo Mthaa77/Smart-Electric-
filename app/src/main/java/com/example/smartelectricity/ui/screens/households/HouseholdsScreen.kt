@@ -17,6 +17,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.smartelectricity.data.db.HouseholdEntity
 import com.example.smartelectricity.data.repository.TariffRepository
+import com.example.smartelectricity.ui.components.LiquidGlassPanel
+import com.example.smartelectricity.ui.components.premiumDepth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,7 +74,15 @@ fun HouseholdsScreen(
                     Text("No Saved Households Yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("Save your household tariff settings to track history and receive tariff alerts.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { showAddDialog = true }) {
+                    Button(
+                        onClick = { showAddDialog = true },
+                        modifier = Modifier.premiumDepth(
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = 9.dp,
+                            accentColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Add Household Profile")
@@ -88,15 +98,13 @@ fun HouseholdsScreen(
                         val distributor = TariffRepository.getDistributorById(hh.distributorId)
                         val profile = TariffRepository.getTariffProfileById(hh.tariffProfileId)
 
-                        Card(
+                        LiquidGlassPanel(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onSelectHousehold(hh) },
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                            ),
-                            border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+                            accentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                            elevation = if (isSelected) 13.dp else 7.dp
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),

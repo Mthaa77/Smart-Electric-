@@ -4,12 +4,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.example.smartelectricity.ui.AppViewModel
+import com.example.smartelectricity.ui.components.LiquidGlassPanel
 import com.example.smartelectricity.ui.screens.admin.AdminEvidenceScreen
 import com.example.smartelectricity.ui.screens.alerts.AlertsScreen
 import com.example.smartelectricity.ui.screens.calculator.CalculatorWizardScreen
@@ -251,37 +255,52 @@ private fun PremiumBottomNavigation(
     currentRoute: String,
     onNavigate: (String) -> Unit
 ) {
-    Surface(color = MaterialTheme.colorScheme.background) {
-        NavigationBar(
-            modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 7.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp,
-            windowInsets = WindowInsets.navigationBars,
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f))
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+    ) {
+        LiquidGlassPanel(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            accentColor = MaterialTheme.colorScheme.primary,
+            elevation = 18.dp
         ) {
-            bottomDestinations.forEach { destination ->
-                val selected = currentRoute == destination.route ||
-                    (destination.route == "tools" && currentRoute == "budget_forecast")
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = { onNavigate(destination.route) },
-                    icon = {
-                        Icon(
-                            if (selected) destination.selectedIcon else destination.unselectedIcon,
-                            contentDescription = destination.label
+            NavigationBar(
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = Color.Transparent,
+                tonalElevation = 0.dp,
+                windowInsets = WindowInsets.navigationBars,
+            ) {
+                bottomDestinations.forEach { destination ->
+                    val selected = currentRoute == destination.route ||
+                        (destination.route == "tools" && currentRoute == "budget_forecast")
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = { onNavigate(destination.route) },
+                        icon = {
+                            Icon(
+                                if (selected) destination.selectedIcon else destination.unselectedIcon,
+                                contentDescription = destination.label
+                            )
+                        },
+                        label = {
+                            Text(
+                                destination.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    },
-                    label = {
-                        Text(
-                            destination.label,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
                     )
-                )
+                }
             }
         }
     }

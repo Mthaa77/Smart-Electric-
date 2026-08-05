@@ -24,7 +24,9 @@ import androidx.compose.ui.unit.sp
 import com.example.smartelectricity.data.model.CalculationMode
 import com.example.smartelectricity.data.model.CalculationResult
 import com.example.smartelectricity.ui.components.BlockVisualizer
+import com.example.smartelectricity.ui.components.LiquidGlassPanel
 import com.example.smartelectricity.ui.components.VerificationStatusBadge
+import com.example.smartelectricity.ui.components.premiumDepth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,12 +107,11 @@ fun ResultScreen(
 
             // Hero Overview Card
             item {
-                Card(
+                LiquidGlassPanel(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    elevation = 16.dp
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
@@ -180,10 +181,11 @@ fun ResultScreen(
 
             // Money Allocation Table
             item {
-                Card(
+                LiquidGlassPanel(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    accentColor = MaterialTheme.colorScheme.secondary,
+                    elevation = 9.dp
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -277,10 +279,11 @@ fun ResultScreen(
 
             // Source Document Inspector
             item {
-                Card(
+                LiquidGlassPanel(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    accentColor = MaterialTheme.colorScheme.tertiary,
+                    elevation = 8.dp
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
@@ -324,7 +327,13 @@ fun ResultScreen(
                         Button(
                             onClick = onRecordPurchase,
                             enabled = !isPurchaseRecorded,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .premiumDepth(
+                                    shape = RoundedCornerShape(12.dp),
+                                    elevation = 9.dp,
+                                    accentColor = MaterialTheme.colorScheme.primary
+                                ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(Icons.Default.AddTask, contentDescription = null)
@@ -343,7 +352,13 @@ fun ResultScreen(
 
                     Button(
                         onClick = onOpenReconcile,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .premiumDepth(
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = 7.dp,
+                                accentColor = MaterialTheme.colorScheme.secondary
+                            ),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     ) {
