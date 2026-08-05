@@ -2,6 +2,8 @@ package com.example.smartelectricity.data.db
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -121,7 +123,7 @@ interface TariffDao {
         TariffProfileEntity::class,
         TariffBlockEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -142,12 +144,20 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_electricity_calculator.db"
                 )
+                .addMigrations(MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance
             }
         }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE tariff_profiles ADD COLUMN dailyFixedChargeRand REAL NOT NULL DEFAULT 0.0"
+                )
+            }
+        }
     }
 }
-

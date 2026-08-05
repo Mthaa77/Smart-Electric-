@@ -156,6 +156,9 @@ fun MainAppScreen(
                     onSetFirstPurchase = { viewModel.setFirstPurchaseOfMonth(it) },
                     onSetHasClaimedFbe = { viewModel.setHasClaimedFbeThisMonth(it) },
                     onSetIsIndigent = { viewModel.setIsIndigentRegistered(it) },
+                    onSetUnitsAlreadyAllocated = { viewModel.setUnitsAlreadyAllocatedThisMonthInput(it) },
+                    onSetDaysSinceLastPurchase = { viewModel.setDaysSinceLastPurchaseInput(it) },
+                    onSetArrears = { viewModel.setArrearsInput(it) },
                     onRunCalculation = { viewModel.runCalculation() },
                     onCalculationDone = { navController.navigate("result") },
                     onBackToHome = { navController.popBackStack() }

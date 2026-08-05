@@ -80,6 +80,7 @@ data class CalculationResult(
     val grossPurchaseRand: Double,
     val vatAmountRand: Double,
     val fixedChargeDeductedRand: Double,
+    val arrearsDeductedRand: Double = 0.0,
     val netEnergyPurchaseRand: Double,
     val paidKwh: Double,
     val freeFbeKwh: Double,

@@ -68,10 +68,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 itemCal.get(java.util.Calendar.MONTH) == curMonth &&
                 itemCal.get(java.util.Calendar.YEAR) == curYear
             }
-            val sum = currentMonthPurchases.sumOf { it.totalCostRand }
-            if (sum > 0) sum else history.sumOf { it.totalCostRand }.takeIf { it > 0 } ?: 650.0
+            currentMonthPurchases.sumOf { it.totalCostRand }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 650.0)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val tariffAlerts: StateFlow<List<TariffAlertEntity>> = alertDao.getAllAlerts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -82,58 +81,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             tariffDataRepository.seedPredefinedTariffsIfEmpty()
         }
 
-        // Pre-populate sample tariff alerts for 2026/2027 NERSA updates
-        viewModelScope.launch {
-            val defaultAlerts = listOf(
-                TariffAlertEntity(
-                    id = 1,
-                    title = "City of Tshwane 2026/27 Approved Tariff Increase",
-                    distributorId = "TSHWANE",
-                    distributorName = "City of Tshwane",
-                    summary = "NERSA approved a 12.7% residential tariff adjustment effective 1 July 2026 across standard prepaid blocks.",
-                    status = "APPROVED",
-                    effectiveDate = "1 July 2026",
-                    percentageChange = 12.7,
-                    sourceDocumentTitle = "City of Tshwane Schedule 2 Tariff Notice"
-                ),
-                TariffAlertEntity(
-                    id = 2,
-                    title = "City of Cape Town Home User Access Fee Update",
-                    distributorId = "CAPE_TOWN",
-                    distributorName = "City of Cape Town",
-                    summary = "Home User daily service charge adjusted to R7.86/day (R235.80/month) recovered on 1st monthly purchase.",
-                    status = "APPROVED",
-                    effectiveDate = "1 July 2026",
-                    percentageChange = 8.5,
-                    sourceDocumentTitle = "City of Cape Town Annexure 6"
-                ),
-                TariffAlertEntity(
-                    id = 3,
-                    title = "Proposed Eskom ERTSA Structure Alignment",
-                    distributorId = "ESKOM_DIRECT",
-                    distributorName = "Eskom Direct",
-                    summary = "Proposed consolidation of Homelight 20A block thresholds for low-consumption rural prepaid meters.",
-                    status = "PROPOSED",
-                    effectiveDate = "1 April 2027",
-                    percentageChange = 9.2,
-                    sourceDocumentTitle = "NERSA Consultation Paper 2026"
-                )
-            )
-            alertDao.insertAlerts(defaultAlerts)
-
-            // Pre-populate default weekly spends if empty
-            weeklySpendDao.getAllWeeklySpends().collect { list ->
-                if (list.isEmpty()) {
-                    val defaultWeeklyLogs = listOf(
-                        WeeklySpendEntity(id = 1, weekLabel = "Week 1 (Aug 1 - 7)", amountRand = 350.0, estimatedKwh = 118.5, notes = "Prepaid top-up start of month"),
-                        WeeklySpendEntity(id = 2, weekLabel = "Week 2 (Aug 8 - 14)", amountRand = 250.0, estimatedKwh = 84.7, notes = "Mid-week top-up"),
-                        WeeklySpendEntity(id = 3, weekLabel = "Week 3 (Aug 15 - 21)", amountRand = 300.0, estimatedKwh = 101.6, notes = "Cold spell heater usage"),
-                        WeeklySpendEntity(id = 4, weekLabel = "Week 4 (Aug 22 - 28)", amountRand = 200.0, estimatedKwh = 67.8, notes = "End of month light usage")
-                    )
-                    defaultWeeklyLogs.forEach { weeklySpendDao.insertWeeklySpend(it) }
-                }
-            }
-        }
     }
 
 
@@ -239,7 +186,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     isFirstPurchaseOfMonth = state.isFirstPurchaseOfMonth,
                     hasClaimedFbeThisMonth = state.hasClaimedFbeThisMonth,
                     isIndigentEligible = state.isIndigentRegistered,
-                    unitsAlreadyAllocatedThisMonth = state.unitsAlreadyAllocatedThisMonthInputStr.toDoubleOrNull() ?: 0.0
+                    unitsAlreadyAllocatedThisMonth = state.unitsAlreadyAllocatedThisMonthInputStr.toDoubleOrNull() ?: 0.0,
+                    daysSinceLastPurchase = state.daysSinceLastPurchaseInputStr.toIntOrNull() ?: 0,
+                    arrearsDeductionRand = state.arrearsInputStr.toDoubleOrNull() ?: 0.0
                 )
             }
             CalculationMode.CONVENTIONAL_BILL -> {
@@ -358,4 +307,3 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
-

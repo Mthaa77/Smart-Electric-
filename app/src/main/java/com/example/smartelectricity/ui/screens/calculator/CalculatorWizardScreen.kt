@@ -39,6 +39,9 @@ fun CalculatorWizardScreen(
     onSetFirstPurchase: (Boolean) -> Unit,
     onSetHasClaimedFbe: (Boolean) -> Unit,
     onSetIsIndigent: (Boolean) -> Unit,
+    onSetUnitsAlreadyAllocated: (String) -> Unit,
+    onSetDaysSinceLastPurchase: (String) -> Unit,
+    onSetArrears: (String) -> Unit,
     onRunCalculation: () -> Unit,
     onCalculationDone: () -> Unit,
     onBackToHome: () -> Unit
@@ -168,7 +171,10 @@ fun CalculatorWizardScreen(
                         state = state,
                         onSetAmount = onSetAmount,
                         onSetFirstPurchase = onSetFirstPurchase,
-                        onSetHasClaimedFbe = onSetHasClaimedFbe
+                        onSetHasClaimedFbe = onSetHasClaimedFbe,
+                        onSetUnitsAlreadyAllocated = onSetUnitsAlreadyAllocated,
+                        onSetDaysSinceLastPurchase = onSetDaysSinceLastPurchase,
+                        onSetArrears = onSetArrears
                     )
                     4 -> Step4FbeQuestions(
                         state = state,
@@ -342,7 +348,10 @@ private fun Step3AmountEntry(
     state: CalculatorUiState,
     onSetAmount: (String) -> Unit,
     onSetFirstPurchase: (Boolean) -> Unit,
-    onSetHasClaimedFbe: (Boolean) -> Unit
+    onSetHasClaimedFbe: (Boolean) -> Unit,
+    onSetUnitsAlreadyAllocated: (String) -> Unit,
+    onSetDaysSinceLastPurchase: (String) -> Unit,
+    onSetArrears: (String) -> Unit
 ) {
     val isRand = state.calculationMode == CalculationMode.RAND_TO_KWH
 
@@ -429,6 +438,65 @@ private fun Step3AmountEntry(
                 }
             }
         }
+
+        item {
+            var showAdvanced by remember { mutableStateOf(false) }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAdvanced = !showAdvanced },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Advanced purchase context", fontWeight = FontWeight.Bold)
+                            Text("Use receipt details for a closer match.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+                    }
+
+                    AnimatedVisibility(showAdvanced) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                value = state.unitsAlreadyAllocatedThisMonthInputStr,
+                                onValueChange = onSetUnitsAlreadyAllocated,
+                                label = { Text("Units already bought this month") },
+                                suffix = { Text("kWh") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            if (state.selectedProfile.dailyFixedChargeRand > 0.0) {
+                                OutlinedTextField(
+                                    value = state.daysSinceLastPurchaseInputStr,
+                                    onValueChange = onSetDaysSinceLastPurchase,
+                                    label = { Text("Days since last purchase / billing") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                            OutlinedTextField(
+                                value = state.arrearsInputStr,
+                                onValueChange = onSetArrears,
+                                label = { Text("Known authorised arrears recovery") },
+                                prefix = { Text("R ") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                supportingText = { Text("Leave at R0 unless it appears on your municipal or vending receipt.") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -469,7 +537,12 @@ private fun Step4FbeQuestions(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Registered as Indigent with Municipality?", fontWeight = FontWeight.Bold)
-                        Text("Or municipal property valuation is below R150,000", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = fbeConfig.propertyValuationCapRand?.let { "Eligibility is confirmed by your municipality; its published property cap is R${"%.0f".format(it)}." }
+                                ?: "Eligibility is confirmed by your municipality for this tariff.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Checkbox(
                         checked = state.isIndigentRegistered,
