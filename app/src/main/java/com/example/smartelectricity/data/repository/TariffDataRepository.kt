@@ -41,12 +41,9 @@ class TariffDataRepository(private val tariffDao: TariffDao) {
     /**
      * Seed predefined South African electricity tariff blocks and distributor rates into Room if database is empty.
      */
-    suspend fun seedPredefinedTariffsIfEmpty() {
-        val existing = tariffDao.getDistributorById("TSHWANE")
-        if (existing == null) {
-            val (distEntities, profileEntities, blockEntities) = mapDomainToEntities(TariffRepository.distributors)
-            tariffDao.insertFullTariffData(distEntities, profileEntities, blockEntities)
-        }
+    suspend fun refreshBundledTariffs() {
+        val (distEntities, profileEntities, blockEntities) = mapDomainToEntities(TariffRepository.distributors)
+        tariffDao.replaceBundledTariffData(distEntities, profileEntities, blockEntities)
     }
 
     /**
@@ -107,6 +104,7 @@ class TariffDataRepository(private val tariffDao: TariffDao) {
                             monthlyFixedChargeRand = profile.monthlyFixedChargeRand,
                             monthlyServiceFeeRand = profile.monthlyServiceFeeRand,
                             dailyFixedChargeRand = profile.dailyFixedChargeRand,
+                            fixedChargeRecoveryRule = profile.fixedChargeRecoveryRule.name,
                             vatRatePercent = profile.vatRatePercent,
                             vatInclusiveRates = profile.vatInclusiveRates,
                             fbeAvailable = profile.fbeConfig.isAvailable,
@@ -114,11 +112,18 @@ class TariffDataRepository(private val tariffDao: TariffDao) {
                             fbeMonthlyUsageCapKwh = profile.fbeConfig.monthlyUsageCapKwh,
                             fbePropertyValuationCapRand = profile.fbeConfig.propertyValuationCapRand,
                             fbeIndigentRegistrationRequired = profile.fbeConfig.indigentRegistrationRequired,
+                            fbeAllocationTiersCsv = profile.fbeConfig.allocationTiers.joinToString(";") { tier ->
+                                "${tier.minHistoricAverageKwhInclusive}:${tier.maxHistoricAverageKwhExclusive ?: ""}:${tier.freeKwh}"
+                            },
                             fbeDescription = profile.fbeConfig.description,
+                            effectiveFromStr = profile.effectiveFromStr,
+                            effectiveToStr = profile.effectiveToStr,
                             effectiveDateStr = profile.effectiveDateStr,
+                            sourceDocumentId = profile.sourceDocumentId,
                             sourceDocumentTitle = profile.sourceDocumentTitle,
                             sourceUrl = profile.sourceUrl,
-                            verificationStatus = profile.verificationStatus.name
+                            verificationStatus = profile.verificationStatus.name,
+                            calculationEngineVersion = profile.calculationEngineVersion
                         )
                     )
 
@@ -164,7 +169,23 @@ fun TariffProfileEntity.toDomainModel(blocks: List<TariffBlock>): TariffProfile 
     val status = try {
         VerificationStatus.valueOf(this.verificationStatus)
     } catch (e: Exception) {
-        VerificationStatus.VERIFIED
+        VerificationStatus.NEEDS_REVIEW
+    }
+
+    val fixedRecoveryRule = try {
+        FixedChargeRecoveryRule.valueOf(this.fixedChargeRecoveryRule)
+    } catch (e: Exception) {
+        FixedChargeRecoveryRule.NONE
+    }
+
+    val allocationTiers = this.fbeAllocationTiersCsv.split(";").mapNotNull { encoded ->
+        if (encoded.isBlank()) return@mapNotNull null
+        val parts = encoded.split(":")
+        if (parts.size != 3) return@mapNotNull null
+        val min = parts[0].toDoubleOrNull() ?: return@mapNotNull null
+        val max = parts[1].takeIf { it.isNotBlank() }?.toDoubleOrNull()
+        val units = parts[2].toDoubleOrNull() ?: return@mapNotNull null
+        FbeAllocationTier(min, max, units)
     }
 
     return TariffProfile(
@@ -177,6 +198,7 @@ fun TariffProfileEntity.toDomainModel(blocks: List<TariffBlock>): TariffProfile 
         monthlyFixedChargeRand = this.monthlyFixedChargeRand,
         monthlyServiceFeeRand = this.monthlyServiceFeeRand,
         dailyFixedChargeRand = this.dailyFixedChargeRand,
+        fixedChargeRecoveryRule = fixedRecoveryRule,
         vatRatePercent = this.vatRatePercent,
         vatInclusiveRates = this.vatInclusiveRates,
         blocks = blocks,
@@ -186,11 +208,16 @@ fun TariffProfileEntity.toDomainModel(blocks: List<TariffBlock>): TariffProfile 
             monthlyUsageCapKwh = this.fbeMonthlyUsageCapKwh,
             propertyValuationCapRand = this.fbePropertyValuationCapRand,
             indigentRegistrationRequired = this.fbeIndigentRegistrationRequired,
+            allocationTiers = allocationTiers,
             description = this.fbeDescription
         ),
+        effectiveFromStr = this.effectiveFromStr,
+        effectiveToStr = this.effectiveToStr,
         effectiveDateStr = this.effectiveDateStr,
+        sourceDocumentId = this.sourceDocumentId,
         sourceDocumentTitle = this.sourceDocumentTitle,
         sourceUrl = this.sourceUrl,
-        verificationStatus = status
+        verificationStatus = status,
+        calculationEngineVersion = this.calculationEngineVersion
     )
 }

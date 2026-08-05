@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 data class CalculatorUiState(
+    val availableDistributors: List<Distributor> = TariffRepository.distributors,
     val selectedDistributor: Distributor = TariffRepository.distributors.first(),
     val selectedProfile: TariffProfile = TariffRepository.distributors.first().profiles.first(),
     val meterType: MeterType = MeterType.PREPAID,
@@ -32,7 +33,9 @@ data class CalculatorUiState(
     val activeReconciliation: ReconciliationResult? = null,
     val actualUnitsInputStr: String = "",
     val activeHousehold: HouseholdEntity? = null,
-    val monthlyBudgetLimitRand: Double = 1500.0
+    val monthlyBudgetLimitRand: Double = 1500.0,
+    val purchaseSaveMessage: String? = null,
+    val isActiveResultRecorded: Boolean = false
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -43,6 +46,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val alertDao = db.tariffAlertDao()
     private val weeklySpendDao = db.weeklySpendDao()
     private val tariffDao = db.tariffDao()
+    private val purchaseLedgerDao = db.purchaseLedgerDao()
 
     val tariffDataRepository = TariffDataRepository(tariffDao)
 
@@ -58,27 +62,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val weeklySpends: StateFlow<List<WeeklySpendEntity>> = weeklySpendDao.getAllWeeklySpends()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val monthlySpendingTotal: StateFlow<Double> = historyDao.getAllHistory()
-        .map { history ->
-            val cal = java.util.Calendar.getInstance()
-            val curMonth = cal.get(java.util.Calendar.MONTH)
-            val curYear = cal.get(java.util.Calendar.YEAR)
-            val currentMonthPurchases = history.filter { item ->
-                val itemCal = java.util.Calendar.getInstance().apply { timeInMillis = item.dateTimestamp }
-                itemCal.get(java.util.Calendar.MONTH) == curMonth &&
-                itemCal.get(java.util.Calendar.YEAR) == curYear
-            }
-            currentMonthPurchases.sumOf { it.totalCostRand }
-        }
+    private val currentYearMonth: String
+        get() = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.US).format(java.util.Date())
+
+    val monthlySpendingTotal: StateFlow<Double> = purchaseLedgerDao.observeTotalSpendForMonth(currentYearMonth)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val activeLedger: StateFlow<MonthlyBlockLedgerEntity?> = uiState
+        .map { state -> Triple(state.activeHousehold?.id, currentYearMonth, state.selectedProfile.id) }
+        .distinctUntilChanged()
+        .flatMapLatest { (householdId, yearMonth, tariffProfileId) ->
+            if (householdId == null) flowOf(null)
+            else purchaseLedgerDao.observeLedger(householdId, yearMonth, tariffProfileId)
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val tariffAlerts: StateFlow<List<TariffAlertEntity>> = alertDao.getAllAlerts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        // Seed predefined South African electricity tariff blocks and distributor rates into Room
         viewModelScope.launch {
-            tariffDataRepository.seedPredefinedTariffsIfEmpty()
+            tariffDataRepository.refreshBundledTariffs()
+        }
+        viewModelScope.launch {
+            tariffDataRepository.getAllDistributorsFlow().collect { distributors ->
+                if (distributors.isEmpty()) return@collect
+                _uiState.update { state ->
+                    val selectedDistributor = distributors.firstOrNull { it.id == state.selectedDistributor.id }
+                        ?: distributors.first()
+                    val selectedProfile = selectedDistributor.profiles.firstOrNull { it.id == state.selectedProfile.id }
+                        ?: selectedDistributor.profiles.first()
+                    state.copy(
+                        availableDistributors = distributors,
+                        selectedDistributor = selectedDistributor,
+                        selectedProfile = selectedProfile
+                    )
+                }
+            }
         }
 
     }
@@ -163,6 +183,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun runCalculation() {
         val state = _uiState.value
         val amount = state.amountInputStr.toDoubleOrNull() ?: 0.0
+        val ledger = activeLedger.value
+        val hasAutomaticLedger = state.activeHousehold != null && ledger?.tariffProfileId == state.selectedProfile.id
+        val unitsAlreadyAllocated = if (hasAutomaticLedger) ledger?.paidUnitsAllocatedKwh ?: 0.0
+            else state.unitsAlreadyAllocatedThisMonthInputStr.toDoubleOrNull() ?: 0.0
+        val hasClaimedFbe = if (hasAutomaticLedger) (ledger?.freeUnitsAllocatedKwh ?: 0.0) > 0.0
+            else state.hasClaimedFbeThisMonth
+        val isFirstPurchase = if (state.activeHousehold != null) ledger?.lastPurchaseAt == null
+            else state.isFirstPurchaseOfMonth
+        val daysSinceLastPurchase = if (ledger?.lastPurchaseAt != null) {
+            (((System.currentTimeMillis() - ledger.lastPurchaseAt) / 86_400_000L).coerceAtLeast(0L)).toInt()
+        } else state.daysSinceLastPurchaseInputStr.toIntOrNull() ?: 0
+        val household = state.activeHousehold
 
         val result = when (state.calculationMode) {
             CalculationMode.RAND_TO_KWH -> {
@@ -170,11 +202,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     distributor = state.selectedDistributor,
                     profile = state.selectedProfile,
                     amountRand = amount,
-                    isFirstPurchaseOfMonth = state.isFirstPurchaseOfMonth,
-                    hasClaimedFbeThisMonth = state.hasClaimedFbeThisMonth,
+                    isFirstPurchaseOfMonth = isFirstPurchase,
+                    hasClaimedFbeThisMonth = hasClaimedFbe,
                     isIndigentEligible = state.isIndigentRegistered,
-                    unitsAlreadyAllocatedThisMonth = state.unitsAlreadyAllocatedThisMonthInputStr.toDoubleOrNull() ?: 0.0,
-                    daysSinceLastPurchase = state.daysSinceLastPurchaseInputStr.toIntOrNull() ?: 0,
+                    propertyValuationRand = household?.propertyValuationRand ?: state.propertyValuationRand,
+                    historicAverageMonthlyKwh = household?.estimatedMonthlyKwh,
+                    unitsAlreadyAllocatedThisMonth = unitsAlreadyAllocated,
+                    daysSinceLastPurchase = daysSinceLastPurchase,
                     arrearsDeductionRand = state.arrearsInputStr.toDoubleOrNull() ?: 0.0
                 )
             }
@@ -183,11 +217,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     distributor = state.selectedDistributor,
                     profile = state.selectedProfile,
                     targetKwh = amount,
-                    isFirstPurchaseOfMonth = state.isFirstPurchaseOfMonth,
-                    hasClaimedFbeThisMonth = state.hasClaimedFbeThisMonth,
+                    isFirstPurchaseOfMonth = isFirstPurchase,
+                    hasClaimedFbeThisMonth = hasClaimedFbe,
                     isIndigentEligible = state.isIndigentRegistered,
-                    unitsAlreadyAllocatedThisMonth = state.unitsAlreadyAllocatedThisMonthInputStr.toDoubleOrNull() ?: 0.0,
-                    daysSinceLastPurchase = state.daysSinceLastPurchaseInputStr.toIntOrNull() ?: 0,
+                    propertyValuationRand = household?.propertyValuationRand ?: state.propertyValuationRand,
+                    historicAverageMonthlyKwh = household?.estimatedMonthlyKwh,
+                    unitsAlreadyAllocatedThisMonth = unitsAlreadyAllocated,
+                    daysSinceLastPurchase = daysSinceLastPurchase,
                     arrearsDeductionRand = state.arrearsInputStr.toDoubleOrNull() ?: 0.0
                 )
             }
@@ -206,14 +242,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        _uiState.update { it.copy(activeResult = result) }
-
-        // Automatically save calculation to history
-        saveCalculationToHistory(result)
+        _uiState.update { it.copy(activeResult = result, purchaseSaveMessage = null, isActiveResultRecorded = false) }
     }
 
-    private fun saveCalculationToHistory(result: CalculationResult) {
-        viewModelScope.launch {
+    private suspend fun saveCalculationToHistory(result: CalculationResult, isCommittedPurchase: Boolean) {
             val entity = CalculationHistoryEntity(
                 householdId = _uiState.value.activeHousehold?.id,
                 distributorId = result.distributor.id,
@@ -226,9 +258,80 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 totalCostRand = result.grossPurchaseRand,
                 fixedChargeDeductedRand = result.fixedChargeDeductedRand,
                 fbeUnitsKwh = result.freeFbeKwh,
-                effectiveDateStr = result.effectiveDateStr
+                effectiveDateStr = result.effectiveDateStr,
+                isCommittedPurchase = isCommittedPurchase
             )
             historyDao.insertHistory(entity)
+    }
+
+    fun recordActivePurchase() {
+        val state = _uiState.value
+        val household = state.activeHousehold
+        val result = state.activeResult
+        if (household == null) {
+            _uiState.update { it.copy(purchaseSaveMessage = "Save or select a household before recording this purchase.") }
+            return
+        }
+        if (result == null || result.mode != CalculationMode.RAND_TO_KWH) {
+            _uiState.update { it.copy(purchaseSaveMessage = "Only completed rand-to-kWh purchases can be recorded.") }
+            return
+        }
+        if (state.isActiveResultRecorded) {
+            _uiState.update { it.copy(purchaseSaveMessage = "This purchase has already been recorded.") }
+            return
+        }
+
+        _uiState.update { it.copy(isActiveResultRecorded = true, purchaseSaveMessage = "Recording purchase…") }
+        viewModelScope.launch {
+            try {
+            val now = System.currentTimeMillis()
+            val yearMonth = currentYearMonth
+            val ledgerKey = "${household.id}:$yearMonth:${result.profile.id}"
+            val existing = purchaseLedgerDao.getLedger(ledgerKey)
+            val purchase = PrepaidPurchaseEntity(
+                householdId = household.id,
+                purchaseTimestamp = now,
+                yearMonth = yearMonth,
+                tenderAmountRand = result.grossPurchaseRand,
+                energyValueRand = result.netEnergyPurchaseRand,
+                fixedDeductionRand = result.fixedChargeDeductedRand,
+                arrearsDeductionRand = result.arrearsDeductedRand,
+                paidUnitsKwh = result.paidKwh,
+                fbeUnitsKwh = result.freeFbeKwh,
+                estimatedTotalUnitsKwh = result.totalKwh,
+                tariffProfileId = result.profile.id,
+                tariffEffectiveFromStr = result.profile.effectiveFromStr,
+                sourceDocumentId = result.sourceDocumentId,
+                calculationEngineVersion = result.calculationEngineVersion
+            )
+            val updatedLedger = MonthlyBlockLedgerEntity(
+                ledgerKey = ledgerKey,
+                householdId = household.id,
+                yearMonth = yearMonth,
+                tariffProfileId = result.profile.id,
+                paidUnitsAllocatedKwh = (existing?.paidUnitsAllocatedKwh ?: 0.0) + result.paidKwh,
+                freeUnitsAllocatedKwh = (existing?.freeUnitsAllocatedKwh ?: 0.0) + result.freeFbeKwh,
+                purchasedAmountRand = (existing?.purchasedAmountRand ?: 0.0) + result.grossPurchaseRand,
+                lastPurchaseAt = now,
+                lastFixedChargeRecoveryAt = if (result.fixedChargeDeductedRand > 0.0) now else existing?.lastFixedChargeRecoveryAt,
+                updatedAt = now
+            )
+            purchaseLedgerDao.recordPurchase(purchase, updatedLedger)
+            saveCalculationToHistory(result, isCommittedPurchase = true)
+            _uiState.update {
+                it.copy(
+                    purchaseSaveMessage = "Purchase recorded. Your monthly tariff block is now updated automatically.",
+                    isActiveResultRecorded = true
+                )
+            }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        purchaseSaveMessage = "The purchase could not be recorded. Please try again.",
+                        isActiveResultRecorded = false
+                    )
+                }
+            }
         }
     }
 
@@ -245,7 +348,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(activeReconciliation = reconciliation) }
     }
 
-    fun saveHousehold(nickname: String, suburb: String) {
+    fun saveHousehold(nickname: String, suburb: String, propertyValueRand: Double, historicAverageMonthlyKwh: Double) {
         viewModelScope.launch {
             val state = _uiState.value
             val entity = HouseholdEntity(
@@ -255,23 +358,35 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 meterType = state.meterType.name,
                 suburbOrMunicipality = suburb,
                 isIndigentRegistered = state.isIndigentRegistered,
-                propertyValuationRand = state.propertyValuationRand
+                propertyValuationRand = propertyValueRand.coerceAtLeast(0.0),
+                estimatedMonthlyKwh = historicAverageMonthlyKwh.coerceAtLeast(0.0)
             )
             val newId = householdDao.insertHousehold(entity)
             val savedHousehold = householdDao.getHouseholdById(newId.toInt())
-            _uiState.update { it.copy(activeHousehold = savedHousehold) }
+            _uiState.update {
+                it.copy(
+                    activeHousehold = savedHousehold,
+                    propertyValuationRand = propertyValueRand.coerceAtLeast(0.0)
+                )
+            }
         }
     }
 
     fun selectHousehold(household: HouseholdEntity) {
-        _uiState.update { it.copy(activeHousehold = household) }
+        _uiState.update {
+            it.copy(
+                activeHousehold = household,
+                propertyValuationRand = household.propertyValuationRand,
+                isIndigentRegistered = household.isIndigentRegistered,
+                hasClaimedFbeThisMonth = household.hasClaimedFbeThisMonth
+            )
+        }
         TariffRepository.getDistributorById(household.distributorId)?.let { dist ->
             selectDistributor(dist)
             TariffRepository.getTariffProfileById(household.tariffProfileId)?.let { prof ->
                 selectProfile(prof)
             }
         }
-        setIsIndigentRegistered(household.isIndigentRegistered)
     }
 
     fun addWeeklySpend(weekLabel: String, amountRand: Double, notes: String = "") {

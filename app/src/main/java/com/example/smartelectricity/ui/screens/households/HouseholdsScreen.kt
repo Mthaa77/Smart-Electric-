@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.smartelectricity.data.db.HouseholdEntity
 import com.example.smartelectricity.data.repository.TariffRepository
@@ -22,12 +24,14 @@ fun HouseholdsScreen(
     households: List<HouseholdEntity>,
     activeHousehold: HouseholdEntity?,
     onSelectHousehold: (HouseholdEntity) -> Unit,
-    onSaveHousehold: (String, String) -> Unit,
+    onSaveHousehold: (String, String, Double, Double) -> Unit,
     onBack: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var nickname by remember { mutableStateOf("") }
     var suburb by remember { mutableStateOf("") }
+    var propertyValue by remember { mutableStateOf("120000") }
+    var historicAverageKwh by remember { mutableStateOf("350") }
 
     Scaffold(
         topBar = {
@@ -112,6 +116,7 @@ fun HouseholdsScreen(
                                 Text("Supplier: ${distributor?.name ?: hh.distributorId}", style = MaterialTheme.typography.bodyMedium)
                                 Text("Tariff: ${profile?.name ?: hh.tariffProfileId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("Location: ${hh.suburbOrMunicipality.ifBlank { "Not set" }}", style = MaterialTheme.typography.labelSmall)
+                                Text("Historic average: ${"%.0f".format(hh.estimatedMonthlyKwh)} kWh/month", style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
@@ -136,12 +141,35 @@ fun HouseholdsScreen(
                                 label = { Text("Suburb / Municipality") },
                                 modifier = Modifier.fillMaxWidth()
                             )
+                            OutlinedTextField(
+                                value = propertyValue,
+                                onValueChange = { propertyValue = it.filter { char -> char.isDigit() || char == '.' } },
+                                label = { Text("Municipal property value") },
+                                prefix = { Text("R ") },
+                                supportingText = { Text("Used only for tariff and FBE eligibility checks.") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = historicAverageKwh,
+                                onValueChange = { historicAverageKwh = it.filter { char -> char.isDigit() || char == '.' } },
+                                label = { Text("Historic average monthly use") },
+                                suffix = { Text("kWh") },
+                                supportingText = { Text("Find this on recent bills, or enter your best estimate.") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     },
                     confirmButton = {
                         Button(
                             onClick = {
-                                onSaveHousehold(nickname, suburb)
+                                onSaveHousehold(
+                                    nickname,
+                                    suburb,
+                                    propertyValue.toDoubleOrNull() ?: 0.0,
+                                    historicAverageKwh.toDoubleOrNull() ?: 0.0
+                                )
                                 showAddDialog = false
                             }
                         ) {
