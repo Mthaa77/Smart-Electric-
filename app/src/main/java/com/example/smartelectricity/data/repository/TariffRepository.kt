@@ -22,6 +22,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.PREPAID),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.NONE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, null, 270.30)
@@ -32,7 +33,10 @@ object TariffRepository {
                         indigentRegistrationRequired = true,
                         description = "50 kWh free monthly via municipal indigent registration."
                     ),
+                    effectiveFromStr = "2026-04-01",
+                    effectiveToStr = "2027-03-31",
                     effectiveDateStr = "1 April 2026",
+                    sourceDocumentId = "src_eskom_standard_prices_2026",
                     sourceDocumentTitle = "Eskom Schedule of Standard Prices 2026/2027",
                     sourceUrl = "https://www.eskom.co.za/distribution/2026-2027-tariff-increase/",
                     verificationStatus = VerificationStatus.VERIFIED
@@ -46,6 +50,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.PREPAID, MeterType.SMART),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.NONE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, null, 343.61)
@@ -55,7 +60,10 @@ object TariffRepository {
                         monthlyUsageCapKwh = 400.0,
                         indigentRegistrationRequired = true
                     ),
+                    effectiveFromStr = "2026-04-01",
+                    effectiveToStr = "2027-03-31",
                     effectiveDateStr = "1 April 2026",
+                    sourceDocumentId = "src_eskom_standard_prices_2026",
                     sourceDocumentTitle = "Eskom Schedule of Standard Prices 2026/2027",
                     sourceUrl = "https://www.eskom.co.za/distribution/2026-2027-tariff-increase/",
                     verificationStatus = VerificationStatus.VERIFIED
@@ -69,6 +77,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.CREDIT, MeterType.SMART),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 23.02, // R15.17 network capacity + R6.60 service/admin + R1.25 GCC = R23.02/day
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.MONTHLY_ACCOUNT_CHARGE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, null, 355.56) // 322.06 energy + 0.52 ancillary + 32.98 network demand
@@ -78,7 +87,10 @@ object TariffRepository {
                         isAvailable = false,
                         description = "Homepower 1 does not qualify for FBE."
                     ),
+                    effectiveFromStr = "2026-04-01",
+                    effectiveToStr = "2027-03-31",
                     effectiveDateStr = "1 April 2026",
+                    sourceDocumentId = "src_eskom_standard_prices_2026",
                     sourceDocumentTitle = "Eskom Schedule of Standard Prices 2026/2027 (Homepower)",
                     sourceUrl = "https://www.eskom.co.za/distribution/2026-2027-tariff-increase/",
                     verificationStatus = VerificationStatus.VERIFIED
@@ -92,12 +104,16 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.CREDIT, MeterType.SMART),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 61.33, // R37.79 + R18.39 + R5.15 = R61.33/day
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.MONTHLY_ACCOUNT_CHARGE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, null, 304.22) // 279.34 + 0.52 + 18.18 + 6.18 = 304.22 c/kWh
                     ),
                     fbeConfig = FbeConfig(isAvailable = false),
+                    effectiveFromStr = "2026-04-01",
+                    effectiveToStr = "2027-03-31",
                     effectiveDateStr = "1 April 2026",
+                    sourceDocumentId = "src_eskom_standard_prices_2026",
                     sourceDocumentTitle = "Eskom Schedule of Standard Prices 2026/2027 (Businessrate)",
                     sourceUrl = "https://www.eskom.co.za/distribution/2026-2027-tariff-increase/",
                     verificationStatus = VerificationStatus.VERIFIED
@@ -121,6 +137,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.PREPAID, MeterType.SMART, MeterType.CREDIT),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.NONE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, 100.0, 324.12),
@@ -134,10 +151,13 @@ object TariffRepository {
                         indigentRegistrationRequired = true,
                         description = "100 kWh free monthly for certified indigent households."
                     ),
+                    effectiveFromStr = "2026-07-01",
+                    effectiveToStr = "2027-06-30",
                     effectiveDateStr = "1 July 2026",
+                    sourceDocumentId = "src_tshwane_notice_2026",
                     sourceDocumentTitle = "City of Tshwane Approved Electricity Tariffs 2026/2027",
                     sourceUrl = "https://www.tshwane.gov.za/",
-                    verificationStatus = VerificationStatus.VERIFIED
+                    verificationStatus = VerificationStatus.OFFICIAL_PARSED
                 )
             )
         ),
@@ -158,6 +178,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.PREPAID, MeterType.CREDIT),
                     monthlyFixedChargeRand = 74.77,
                     dailyFixedChargeRand = 2.46,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.DAILY_ACCRUAL_AT_VENDING,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, 600.0, 413.79),
@@ -168,7 +189,10 @@ object TariffRepository {
                         isAvailable = false,
                         description = "Domestic tariff does not qualify for FBE."
                     ),
+                    effectiveFromStr = "2026-07-01",
+                    effectiveToStr = "2027-06-30",
                     effectiveDateStr = "1 July 2026",
+                    sourceDocumentId = "src_cct_residential_2026",
                     sourceDocumentTitle = "City of Cape Town Understanding Residential Tariffs 2026/27",
                     sourceUrl = "https://www.capetown.gov.za/tariffs/",
                     verificationStatus = VerificationStatus.VERIFIED
@@ -181,14 +205,18 @@ object TariffRepository {
                     description = "Monthly fixed charge R424.30 with lower per-unit energy rates (355.95 c/kWh).",
                     compatibleMeterTypes = listOf(MeterType.PREPAID, MeterType.SMART, MeterType.CREDIT),
                     monthlyFixedChargeRand = 424.30,
-                    dailyFixedChargeRand = 13.95,
+                    dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.FULL_MONTH_AT_FIRST_VENDING,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, 600.0, 355.95),
                         TariffBlock(2, 600.0, null, 469.06)
                     ),
                     fbeConfig = FbeConfig(isAvailable = false),
+                    effectiveFromStr = "2026-07-01",
+                    effectiveToStr = "2027-06-30",
                     effectiveDateStr = "1 July 2026",
+                    sourceDocumentId = "src_cct_residential_2026",
                     sourceDocumentTitle = "City of Cape Town Electricity Tariffs 2026/27",
                     sourceUrl = "https://www.capetown.gov.za/tariffs/",
                     verificationStatus = VerificationStatus.VERIFIED
@@ -202,6 +230,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.PREPAID),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.NONE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, null, 283.04)
@@ -209,10 +238,18 @@ object TariffRepository {
                     fbeConfig = FbeConfig(
                         freeKwh = 60.0,
                         monthlyUsageCapKwh = 450.0,
+                        propertyValuationCapRand = 500000.0,
                         indigentRegistrationRequired = false,
+                        allocationTiers = listOf(
+                            FbeAllocationTier(0.0, 250.0, 60.0),
+                            FbeAllocationTier(250.0, 450.000001, 25.0)
+                        ),
                         description = "60 kWh free per month for average usage < 250 kWh/m, or 25 kWh free for 250-450 kWh/m."
                     ),
+                    effectiveFromStr = "2026-07-01",
+                    effectiveToStr = "2027-06-30",
                     effectiveDateStr = "1 July 2026",
+                    sourceDocumentId = "src_cct_residential_2026",
                     sourceDocumentTitle = "City of Cape Town Lifeline & Social Relief Policy 2026",
                     sourceUrl = "https://www.capetown.gov.za/tariffs/",
                     verificationStatus = VerificationStatus.VERIFIED
@@ -225,16 +262,20 @@ object TariffRepository {
                     description = "Time-of-Use tariff with seasonal Peak/Standard/Off-Peak energy rates and fixed admin (R396.16) + capacity (R288.48) charges.",
                     compatibleMeterTypes = listOf(MeterType.SMART),
                     monthlyFixedChargeRand = 684.64, // R396.16 admin + R288.48 capacity
-                    dailyFixedChargeRand = 22.50,
+                    dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.MONTHLY_ACCOUNT_CHARGE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, null, 418.54) // Default summer peak
                     ),
                     fbeConfig = FbeConfig(isAvailable = false),
+                    effectiveFromStr = "2026-07-01",
+                    effectiveToStr = "2027-06-30",
                     effectiveDateStr = "1 July 2026",
+                    sourceDocumentId = "src_cct_residential_2026",
                     sourceDocumentTitle = "City of Cape Town Residential Time-of-Use Schedule 2026",
                     sourceUrl = "https://www.capetown.gov.za/tariffs/",
-                    verificationStatus = VerificationStatus.VERIFIED
+                    verificationStatus = VerificationStatus.UNSUPPORTED
                 )
             )
         ),
@@ -255,6 +296,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.PREPAID, MeterType.SMART),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.NONE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, 300.0, 278.40),
@@ -267,10 +309,13 @@ object TariffRepository {
                         indigentRegistrationRequired = true,
                         description = "50 kWh free monthly under the Expanded Social Package (ESP)."
                     ),
+                    effectiveFromStr = "2026-07-01",
+                    effectiveToStr = "2027-06-30",
                     effectiveDateStr = "1 July 2026",
+                    sourceDocumentId = "src_joburg_electricity_2026",
                     sourceDocumentTitle = "City Power Johannesburg Schedule of Charges 2026",
                     sourceUrl = "https://www.citypower.co.za/",
-                    verificationStatus = VerificationStatus.VERIFIED
+                    verificationStatus = VerificationStatus.NEEDS_REVIEW
                 )
             )
         ),
@@ -291,6 +336,7 @@ object TariffRepository {
                     compatibleMeterTypes = listOf(MeterType.PREPAID, MeterType.SMART),
                     monthlyFixedChargeRand = 0.0,
                     dailyFixedChargeRand = 0.0,
+                    fixedChargeRecoveryRule = FixedChargeRecoveryRule.NONE,
                     vatInclusiveRates = true,
                     blocks = listOf(
                         TariffBlock(1, 0.0, null, 328.70)
@@ -301,10 +347,13 @@ object TariffRepository {
                         indigentRegistrationRequired = true,
                         description = "65 kWh free per month for poverty-alleviation registered households."
                     ),
+                    effectiveFromStr = "2026-07-01",
+                    effectiveToStr = "2027-06-30",
                     effectiveDateStr = "1 July 2026",
+                    sourceDocumentId = "src_ethekwini_tariffs_2026",
                     sourceDocumentTitle = "eThekwini Electricity Rates Gazette 2026",
                     sourceUrl = "https://www.durban.gov.za/",
-                    verificationStatus = VerificationStatus.VERIFIED
+                    verificationStatus = VerificationStatus.NEEDS_REVIEW
                 )
             )
         )

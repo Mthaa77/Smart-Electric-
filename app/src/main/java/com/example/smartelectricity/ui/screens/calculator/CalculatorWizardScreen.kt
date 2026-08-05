@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.example.smartelectricity.data.model.CalculationMode
 import com.example.smartelectricity.data.model.MeterType
 import com.example.smartelectricity.data.model.TariffProfile
-import com.example.smartelectricity.data.repository.TariffRepository
+import com.example.smartelectricity.data.model.isCalculationSupported
 import com.example.smartelectricity.ui.CalculatorUiState
 import com.example.smartelectricity.ui.components.QuickAmountChips
 import com.example.smartelectricity.ui.components.VerificationStatusBadge
@@ -107,7 +107,9 @@ fun CalculatorWizardScreen(
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
-                            )
+                            ),
+                            enabled = state.selectedProfile.isCalculationSupported &&
+                                (state.amountInputStr.toDoubleOrNull() ?: 0.0) > 0.0
                         ) {
                             Icon(Icons.Default.Calculate, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
@@ -205,7 +207,11 @@ private fun Step1SupplierSelection(
     onSelectDistributor: (com.example.smartelectricity.data.model.Distributor) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    val filtered = TariffRepository.searchDistributor(query)
+    val filtered = state.availableDistributors.filter { distributor ->
+        query.isBlank() || distributor.name.contains(query, ignoreCase = true) ||
+            distributor.province.contains(query, ignoreCase = true) ||
+            distributor.recognitionClue.contains(query, ignoreCase = true)
+    }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -294,10 +300,11 @@ private fun Step2ProfileSelection(
         ) {
             items(state.selectedDistributor.profiles) { prof ->
                 val isSelected = prof.id == state.selectedProfile.id
+                val isSupported = prof.isCalculationSupported
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelectProfile(prof) },
+                        .clickable(enabled = isSupported) { onSelectProfile(prof) },
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
@@ -318,6 +325,19 @@ private fun Step2ProfileSelection(
                         }
 
                         Text(prof.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        if (!isSupported) {
+                            Text(
+                                text = if (prof.verificationStatus == com.example.smartelectricity.data.model.VerificationStatus.UNSUPPORTED) {
+                                    "Calculation unavailable until the complete time-of-use calendar is imported."
+                                } else {
+                                    "Official schedule found, but the tariff rows still require manual verification."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
 
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -456,7 +476,12 @@ private fun Step3AmountEntry(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Advanced purchase context", fontWeight = FontWeight.Bold)
-                            Text("Use receipt details for a closer match.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                if (state.activeHousehold != null) "Monthly block progress is loaded automatically for ${state.activeHousehold.nickname}."
+                                else "Use receipt details for a closer match, or select a household for automatic tracking.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         Icon(if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
                     }

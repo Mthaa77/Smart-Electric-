@@ -1,6 +1,7 @@
 package com.example.smartelectricity.data.db
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -36,6 +37,7 @@ data class CalculationHistoryEntity(
     val fixedChargeDeductedRand: Double,
     val fbeUnitsKwh: Double,
     val effectiveDateStr: String,
+    @ColumnInfo(defaultValue = "0") val isCommittedPurchase: Boolean = false,
     val isReconciled: Boolean = false,
     val actualUnitsReceived: Double? = null,
     val mismatchCause: String? = null
@@ -97,7 +99,8 @@ data class TariffProfileEntity(
     val compatibleMeterTypesCsv: String = "PREPAID,SMART",
     val monthlyFixedChargeRand: Double = 0.0,
     val monthlyServiceFeeRand: Double = 0.0,
-    val dailyFixedChargeRand: Double = 0.0,
+    @ColumnInfo(defaultValue = "0.0") val dailyFixedChargeRand: Double = 0.0,
+    @ColumnInfo(defaultValue = "'NONE'") val fixedChargeRecoveryRule: String = "NONE",
     val vatRatePercent: Double = 15.0,
     val vatInclusiveRates: Boolean = true,
     val fbeAvailable: Boolean = true,
@@ -105,11 +108,16 @@ data class TariffProfileEntity(
     val fbeMonthlyUsageCapKwh: Double? = 450.0,
     val fbePropertyValuationCapRand: Double? = 150000.0,
     val fbeIndigentRegistrationRequired: Boolean = true,
+    @ColumnInfo(defaultValue = "''") val fbeAllocationTiersCsv: String = "",
     val fbeDescription: String = "50 kWh free per month",
+    @ColumnInfo(defaultValue = "'2026-07-01'") val effectiveFromStr: String = "2026-07-01",
+    @ColumnInfo(defaultValue = "'2027-06-30'") val effectiveToStr: String? = "2027-06-30",
     val effectiveDateStr: String = "1 July 2026",
+    @ColumnInfo(defaultValue = "''") val sourceDocumentId: String = "",
     val sourceDocumentTitle: String = "Official 2026/2027 Municipal Tariff Schedule",
     val sourceUrl: String = "https://www.nersa.org.za",
-    val verificationStatus: String = "VERIFIED"
+    val verificationStatus: String = "VERIFIED",
+    @ColumnInfo(defaultValue = "'2.0.0'") val calculationEngineVersion: String = "2.0.0"
 )
 
 @Entity(
@@ -133,4 +141,42 @@ data class TariffBlockEntity(
     val rateCentsPerKwh: Double
 )
 
+@Entity(
+    tableName = "prepaid_purchases",
+    indices = [Index(value = ["householdId", "yearMonth"])]
+)
+data class PrepaidPurchaseEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val householdId: Int,
+    val purchaseTimestamp: Long = System.currentTimeMillis(),
+    val yearMonth: String,
+    val tenderAmountRand: Double,
+    val energyValueRand: Double,
+    val fixedDeductionRand: Double,
+    val arrearsDeductionRand: Double,
+    val paidUnitsKwh: Double,
+    val fbeUnitsKwh: Double,
+    val estimatedTotalUnitsKwh: Double,
+    val actualUnitsKwh: Double? = null,
+    val tariffProfileId: String,
+    val tariffEffectiveFromStr: String,
+    val sourceDocumentId: String,
+    val calculationEngineVersion: String
+)
 
+@Entity(
+    tableName = "monthly_block_ledgers",
+    indices = [Index(value = ["householdId", "yearMonth", "tariffProfileId"], unique = true)]
+)
+data class MonthlyBlockLedgerEntity(
+    @PrimaryKey val ledgerKey: String,
+    val householdId: Int,
+    val yearMonth: String,
+    val tariffProfileId: String,
+    val paidUnitsAllocatedKwh: Double = 0.0,
+    val freeUnitsAllocatedKwh: Double = 0.0,
+    val purchasedAmountRand: Double = 0.0,
+    val lastPurchaseAt: Long? = null,
+    val lastFixedChargeRecoveryAt: Long? = null,
+    val updatedAt: Long = System.currentTimeMillis()
+)

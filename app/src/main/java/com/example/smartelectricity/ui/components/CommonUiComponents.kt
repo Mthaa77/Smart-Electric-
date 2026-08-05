@@ -28,6 +28,7 @@ fun VerificationStatusBadge(
 ) {
     val (bgColor, textColor, icon) = when (status) {
         VerificationStatus.VERIFIED -> Triple(Color(0xFFDCFCE7), Color(0xFF15803D), Icons.Default.CheckCircle)
+        VerificationStatus.OFFICIAL_PARSED -> Triple(Color(0xFFE0F2FE), Color(0xFF0369A1), Icons.Default.FactCheck)
         VerificationStatus.RECENTLY_CHANGED -> Triple(Color(0xFFE0F2FE), Color(0xFF0369A1), Icons.Default.Update)
         VerificationStatus.SCHEDULED -> Triple(Color(0xFFF1F5F9), Color(0xFF475569), Icons.Default.Schedule)
         VerificationStatus.ESTIMATE -> Triple(Color(0xFFFEF3C7), Color(0xFFB45309), Icons.Default.Warning)
@@ -413,4 +414,3 @@ fun MonthlyBudgetProgressBarCard(
         )
     }
 }
-

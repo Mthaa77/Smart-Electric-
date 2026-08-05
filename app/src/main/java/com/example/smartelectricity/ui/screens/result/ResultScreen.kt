@@ -1,6 +1,7 @@
 package com.example.smartelectricity.ui.screens.result
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -30,6 +31,9 @@ import com.example.smartelectricity.ui.components.VerificationStatusBadge
 fun ResultScreen(
     result: CalculationResult?,
     onOpenReconcile: () -> Unit,
+    onRecordPurchase: () -> Unit,
+    purchaseSaveMessage: String?,
+    isPurchaseRecorded: Boolean,
     onSaveHouseholdClick: () -> Unit,
     onBackToHome: () -> Unit
 ) {
@@ -82,6 +86,23 @@ fun ResultScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
+            if (!result.isCalculationValid) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Calculation needs corrected inputs", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onErrorContainer)
+                            result.validationWarnings.forEach { warning ->
+                                Text(warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Hero Overview Card
             item {
                 Card(
@@ -191,6 +212,12 @@ fun ResultScreen(
                         if (result.effectiveRandPerKwh > 0.0) {
                             AllocationRow(label = "Effective All-In Unit Price", value = "R${"%.4f".format(result.effectiveRandPerKwh)} / kWh", isHighlight = true)
                         }
+                        result.remainingKwhInCurrentBlock?.let { remaining ->
+                            AllocationRow(label = "Units left in this price block", value = "${"%.1f".format(remaining)} kWh", isHighlight = true)
+                        }
+                        result.nextBlockRateCentsPerKwh?.let { nextRate ->
+                            AllocationRow(label = "Next block energy rate", value = "${"%.2f".format(nextRate)} c/kWh")
+                        }
                     }
                 }
             }
@@ -269,6 +296,23 @@ fun ResultScreen(
 
                         Text("Schedule: ${result.sourceTitle}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                         Text("Effective Date: ${result.effectiveDateStr}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        AnimatedVisibility(showSourceInspector) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Source ID: ${result.sourceDocumentId.ifBlank { "Not supplied" }}", style = MaterialTheme.typography.labelSmall)
+                                Text("Calculation engine: ${result.calculationEngineVersion}", style = MaterialTheme.typography.labelSmall)
+                                Text("Estimate only. The official supplier bill or vending result remains authoritative.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                TextButton(
+                                    onClick = {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(result.sourceUrl)))
+                                    },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Open official source")
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -276,6 +320,27 @@ fun ResultScreen(
             // Quick Actions
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (result.mode == CalculationMode.RAND_TO_KWH) {
+                        Button(
+                            onClick = onRecordPurchase,
+                            enabled = !isPurchaseRecorded,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.AddTask, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isPurchaseRecorded) "Purchase recorded" else "Record purchase & update monthly block")
+                        }
+                    }
+
+                    purchaseSaveMessage?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (message.startsWith("Purchase recorded")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+
                     Button(
                         onClick = onOpenReconcile,
                         modifier = Modifier.fillMaxWidth(),

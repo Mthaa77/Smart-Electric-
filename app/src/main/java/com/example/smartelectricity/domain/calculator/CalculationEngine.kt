@@ -13,6 +13,8 @@ object CalculationEngine {
         isFirstPurchaseOfMonth: Boolean,
         hasClaimedFbeThisMonth: Boolean,
         isIndigentEligible: Boolean = false,
+        propertyValuationRand: Double? = null,
+        historicAverageMonthlyKwh: Double? = null,
         unitsAlreadyAllocatedThisMonth: Double = 0.0,
         daysSinceLastPurchase: Int = 0,
         arrearsDeductionRand: Double = 0.0
@@ -56,19 +58,23 @@ object CalculationEngine {
         stepExplanations.add("4. Amount Available for Electricity Energy: R${"%.2f".format(netEnergyRand)}")
 
         // FBE Allocation
-        val fbeUnitsKwh = if (isFbeAvailableForPurchase(profile, isIndigentEligible, hasClaimedFbeThisMonth, isFirstPurchaseOfMonth, safeUnitsAlreadyAllocated)) {
-            profile.fbeConfig.freeKwh
-        } else 0.0
+        val fbeAllocation = fbeAllocationForPurchase(
+            profile = profile,
+            isIndigentEligible = isIndigentEligible,
+            propertyValuationRand = propertyValuationRand,
+            historicAverageMonthlyKwh = historicAverageMonthlyKwh,
+            hasClaimedFbeThisMonth = hasClaimedFbeThisMonth,
+            isFirstPurchaseOfMonth = isFirstPurchaseOfMonth,
+            unitsAlreadyAllocatedThisMonth = safeUnitsAlreadyAllocated
+        )
+        val fbeUnitsKwh = fbeAllocation.unitsKwh
+        if (fbeAllocation.reason != null && fbeUnitsKwh == 0.0) {
+            stepExplanations.add("5. FBE Status: 0 kWh (${fbeAllocation.reason})")
+        }
 
         if (fbeUnitsKwh > 0.0) {
             stepExplanations.add("5. Free Basic Electricity (FBE) Applied: +${"%.1f".format(fbeUnitsKwh)} kWh free units")
-        } else if (hasClaimedFbeThisMonth) {
-            stepExplanations.add("5. FBE Status: 0 kWh (FBE allocation already claimed earlier this month)")
-        } else if (profile.fbeConfig.monthlyUsageCapKwh?.let { safeUnitsAlreadyAllocated >= it } == true) {
-            stepExplanations.add("5. FBE Status: 0 kWh (monthly usage cap already reached)")
-        } else if (!isIndigentEligible && profile.fbeConfig.indigentRegistrationRequired && profile.fbeConfig.isAvailable) {
-            stepExplanations.add("5. FBE Status: 0 kWh (Household not registered for indigent relief / FBE)")
-        } else {
+        } else if (fbeAllocation.reason == null) {
             stepExplanations.add("5. FBE Status: N/A on this tariff profile")
         }
 
@@ -148,17 +154,17 @@ object CalculationEngine {
             safeAmountRand / totalKwh
         } else 0.0
 
-        val vatAmount = if (profile.vatInclusiveRates) {
-            safeAmountRand * (profile.vatRatePercent / (100.0 + profile.vatRatePercent))
-        } else {
-            safeAmountRand * (profile.vatRatePercent / 100.0)
-        }
+        val vatAmount = vatFromGross(fixedChargeDeducted + netEnergyRand, profile)
 
         val confidenceMessage = when (profile.verificationStatus) {
-            VerificationStatus.VERIFIED -> "Verified official calculation using approved ${distributor.name} 2026/27 tariff schedule."
+            VerificationStatus.VERIFIED -> "Verified estimate using the published ${distributor.name} tariff effective ${profile.effectiveDateStr}."
+            VerificationStatus.OFFICIAL_PARSED -> "Official tariff data parsed from ${profile.sourceDocumentTitle}; final row-level review is still pending."
             VerificationStatus.RECENTLY_CHANGED -> "Updated approved tariff rate effective ${profile.effectiveDateStr}."
-            else -> "Provisional calculation based on standard municipal schedule."
+            VerificationStatus.ESTIMATE -> "Estimate using a provisional tariff mapping. Confirm the tariff on your latest account."
+            else -> "Unverified tariff data. Do not rely on this result until the source schedule has been reviewed."
         }
+
+        val blockProgress = blockProgress(profile, safeUnitsAlreadyAllocated + totalPaidKwh)
 
         return CalculationResult(
             mode = CalculationMode.RAND_TO_KWH,
@@ -182,7 +188,12 @@ object CalculationEngine {
             confidenceMessage = confidenceMessage,
             verificationStatus = profile.verificationStatus,
             effectiveDateStr = profile.effectiveDateStr,
-            sourceTitle = profile.sourceDocumentTitle
+            sourceDocumentId = profile.sourceDocumentId,
+            sourceTitle = profile.sourceDocumentTitle,
+            sourceUrl = profile.sourceUrl,
+            calculationEngineVersion = profile.calculationEngineVersion,
+            remainingKwhInCurrentBlock = blockProgress.remainingKwh,
+            nextBlockRateCentsPerKwh = blockProgress.nextRateCentsPerKwh
         )
     }
 
@@ -193,6 +204,8 @@ object CalculationEngine {
         isFirstPurchaseOfMonth: Boolean,
         hasClaimedFbeThisMonth: Boolean,
         isIndigentEligible: Boolean = false,
+        propertyValuationRand: Double? = null,
+        historicAverageMonthlyKwh: Double? = null,
         unitsAlreadyAllocatedThisMonth: Double = 0.0,
         daysSinceLastPurchase: Int = 0,
         arrearsDeductionRand: Double = 0.0
@@ -205,9 +218,11 @@ object CalculationEngine {
         stepExplanations.add("1. Target Electricity Quantity: ${"%.2f".format(safeTargetKwh)} kWh")
 
         // FBE Adjustment
-        val fbeUnitsKwh = if (isFbeAvailableForPurchase(profile, isIndigentEligible, hasClaimedFbeThisMonth, isFirstPurchaseOfMonth, safeUnitsAlreadyAllocated)) {
-            profile.fbeConfig.freeKwh.coerceAtMost(safeTargetKwh)
-        } else 0.0
+        val fbeAllocation = fbeAllocationForPurchase(
+            profile, isIndigentEligible, propertyValuationRand, historicAverageMonthlyKwh,
+            hasClaimedFbeThisMonth, isFirstPurchaseOfMonth, safeUnitsAlreadyAllocated
+        )
+        val fbeUnitsKwh = fbeAllocation.unitsKwh.coerceAtMost(safeTargetKwh)
 
         val paidKwhNeeded = (safeTargetKwh - fbeUnitsKwh).coerceAtLeast(0.0)
         if (fbeUnitsKwh > 0) {
@@ -278,7 +293,16 @@ object CalculationEngine {
 
         val averageRateCents = if (paidKwhNeeded > 0) (grossEnergyCostRand / paidKwhNeeded) * 100.0 else 0.0
         val effectiveRandPerKwh = if (safeTargetKwh > 0) totalGrossRand / safeTargetKwh else 0.0
-        val vatAmount = vatFromGross(totalGrossRand, profile)
+        val vatAmount = vatFromGross(grossEnergyCostRand + fixedCharge, profile)
+
+        val blockProgress = blockProgress(profile, safeUnitsAlreadyAllocated + paidKwhNeeded)
+        val confidenceMessage = when (profile.verificationStatus) {
+            VerificationStatus.VERIFIED -> "Verified estimate using the published ${distributor.name} tariff effective ${profile.effectiveDateStr}."
+            VerificationStatus.OFFICIAL_PARSED -> "Official tariff data parsed from ${profile.sourceDocumentTitle}; final row-level review is still pending."
+            VerificationStatus.RECENTLY_CHANGED -> "Updated approved tariff rate effective ${profile.effectiveDateStr}."
+            VerificationStatus.ESTIMATE -> "Estimate using a provisional tariff mapping. Confirm the tariff on your latest account."
+            else -> "Unverified tariff data. Do not rely on this result until the source schedule has been reviewed."
+        }
 
         return CalculationResult(
             mode = CalculationMode.KWH_TO_RAND,
@@ -299,10 +323,15 @@ object CalculationEngine {
             effectiveRandPerKwh = effectiveRandPerKwh,
             blockBreakdown = blockBreakdowns,
             stepExplanations = stepExplanations,
-            confidenceMessage = "Verified cost estimate using official ${distributor.name} 2026/27 tariff rules.",
+            confidenceMessage = confidenceMessage,
             verificationStatus = profile.verificationStatus,
             effectiveDateStr = profile.effectiveDateStr,
-            sourceTitle = profile.sourceDocumentTitle
+            sourceDocumentId = profile.sourceDocumentId,
+            sourceTitle = profile.sourceDocumentTitle,
+            sourceUrl = profile.sourceUrl,
+            calculationEngineVersion = profile.calculationEngineVersion,
+            remainingKwhInCurrentBlock = blockProgress.remainingKwh,
+            nextBlockRateCentsPerKwh = blockProgress.nextRateCentsPerKwh
         )
     }
 
@@ -318,7 +347,13 @@ object CalculationEngine {
         val safeClosingReading = closingReading.finiteOrZero().coerceAtLeast(0.0)
         val safeMultiplier = meterMultiplier.finiteOrZero().coerceAtLeast(0.0)
         val safeBillingDays = billingDays.coerceAtLeast(1)
-        val consumptionKwh = ((safeClosingReading - safeOpeningReading) * safeMultiplier).coerceAtLeast(0.0)
+        val readingIsValid = safeClosingReading >= safeOpeningReading && safeMultiplier > 0.0 && billingDays > 0
+        val validationWarnings = buildList {
+            if (safeClosingReading < safeOpeningReading) add("Closing reading is below opening reading. Add a rollover, correction or meter-replacement workflow before calculating this bill.")
+            if (safeMultiplier <= 0.0) add("Meter multiplier must be greater than zero.")
+            if (billingDays <= 0) add("Billing period must contain at least one day.")
+        }
+        val consumptionKwh = if (readingIsValid) (safeClosingReading - safeOpeningReading) * safeMultiplier else 0.0
         val stepExplanations = mutableListOf<String>()
         stepExplanations.add("1. Billing Period: $safeBillingDays days | Meter Reading Delta: ${"%.2f".format(safeClosingReading - safeOpeningReading)} x $safeMultiplier = ${"%.2f".format(consumptionKwh)} kWh")
 
@@ -375,7 +410,9 @@ object CalculationEngine {
 
         stepExplanations.add("2. Energy Charges Across Tariff Blocks: R${"%.2f".format(grossEnergyCostRand)}")
 
-        val fixedNetworkCharge = if (profile.dailyFixedChargeRand > 0.0) {
+        val fixedNetworkCharge = if (!readingIsValid) {
+            0.0
+        } else if (profile.dailyFixedChargeRand > 0.0) {
             safeBillingDays * profile.dailyFixedChargeRand
         } else {
             (safeBillingDays / 30.0) * (profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand)
@@ -413,10 +450,21 @@ object CalculationEngine {
             effectiveRandPerKwh = effectiveRandPerKwh,
             blockBreakdown = blockBreakdowns,
             stepExplanations = stepExplanations,
-            confidenceMessage = "Verified conventional bill estimate using ${distributor.name} 2026/27 official schedule.",
+            confidenceMessage = when (profile.verificationStatus) {
+                VerificationStatus.VERIFIED -> "Verified estimate using the published ${distributor.name} tariff effective ${profile.effectiveDateStr}."
+                VerificationStatus.OFFICIAL_PARSED -> "Official tariff data parsed from ${profile.sourceDocumentTitle}; final row-level review is still pending."
+                VerificationStatus.RECENTLY_CHANGED -> "Updated approved tariff rate effective ${profile.effectiveDateStr}."
+                VerificationStatus.ESTIMATE -> "Estimate using a provisional tariff mapping. Confirm the tariff on your latest account."
+                else -> "Unverified tariff data. Do not rely on this result until the source schedule has been reviewed."
+            },
             verificationStatus = profile.verificationStatus,
             effectiveDateStr = profile.effectiveDateStr,
-            sourceTitle = profile.sourceDocumentTitle
+            sourceDocumentId = profile.sourceDocumentId,
+            sourceTitle = profile.sourceDocumentTitle,
+            sourceUrl = profile.sourceUrl,
+            calculationEngineVersion = profile.calculationEngineVersion,
+            isCalculationValid = readingIsValid,
+            validationWarnings = validationWarnings
         )
     }
 
@@ -471,24 +519,60 @@ object CalculationEngine {
         profile: TariffProfile,
         isFirstPurchaseOfMonth: Boolean,
         daysSinceLastPurchase: Int
-    ): Double = when {
-        profile.dailyFixedChargeRand > 0.0 && daysSinceLastPurchase > 0 ->
+    ): Double = when (profile.fixedChargeRecoveryRule) {
+        FixedChargeRecoveryRule.DAILY_ACCRUAL_AT_VENDING ->
             daysSinceLastPurchase * profile.dailyFixedChargeRand
-        isFirstPurchaseOfMonth -> profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand
-        else -> 0.0
+        FixedChargeRecoveryRule.FULL_MONTH_AT_FIRST_VENDING ->
+            if (isFirstPurchaseOfMonth) profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand else 0.0
+        FixedChargeRecoveryRule.PRO_RATA_30_DAY_MONTH ->
+            daysSinceLastPurchase * ((profile.monthlyFixedChargeRand + profile.monthlyServiceFeeRand) / 30.0)
+        FixedChargeRecoveryRule.MONTHLY_ACCOUNT_CHARGE,
+        FixedChargeRecoveryRule.NONE -> 0.0
     }
 
-    private fun isFbeAvailableForPurchase(
+    private fun fbeAllocationForPurchase(
         profile: TariffProfile,
         isIndigentEligible: Boolean,
+        propertyValuationRand: Double?,
+        historicAverageMonthlyKwh: Double?,
         hasClaimedFbeThisMonth: Boolean,
         isFirstPurchaseOfMonth: Boolean,
         unitsAlreadyAllocatedThisMonth: Double
-    ): Boolean {
+    ): FbeAllocation {
         val fbe = profile.fbeConfig
+        if (!fbe.isAvailable) return FbeAllocation(0.0, null)
+        if (hasClaimedFbeThisMonth) return FbeAllocation(0.0, "allocation already claimed this month")
+        if (!isFirstPurchaseOfMonth) return FbeAllocation(0.0, "FBE is issued on the first qualifying monthly purchase")
         val meetsRegistrationRule = !fbe.indigentRegistrationRequired || isIndigentEligible
+        if (!meetsRegistrationRule) return FbeAllocation(0.0, "municipal indigent/FBE registration is not confirmed")
+        val meetsPropertyRule = fbe.propertyValuationCapRand?.let { cap ->
+            propertyValuationRand != null && propertyValuationRand <= cap
+        } ?: true
+        if (!meetsPropertyRule) return FbeAllocation(0.0, "property-value eligibility is not confirmed")
         val belowUsageCap = fbe.monthlyUsageCapKwh?.let { unitsAlreadyAllocatedThisMonth < it } ?: true
-        return fbe.isAvailable && meetsRegistrationRule && belowUsageCap && !hasClaimedFbeThisMonth && isFirstPurchaseOfMonth
+        if (!belowUsageCap) return FbeAllocation(0.0, "monthly usage cap already reached")
+
+        if (fbe.allocationTiers.isNotEmpty()) {
+            val historicAverage = historicAverageMonthlyKwh
+                ?: return FbeAllocation(0.0, "historic average consumption is required for this FBE tariff")
+            val tier = fbe.allocationTiers.firstOrNull { candidate ->
+                historicAverage >= candidate.minHistoricAverageKwhInclusive &&
+                    (candidate.maxHistoricAverageKwhExclusive == null || historicAverage < candidate.maxHistoricAverageKwhExclusive)
+            } ?: return FbeAllocation(0.0, "historic average consumption is outside the qualifying range")
+            return FbeAllocation(tier.freeKwh, null)
+        }
+
+        return FbeAllocation(fbe.freeKwh, null)
+    }
+
+    private fun blockProgress(profile: TariffProfile, cumulativePaidKwh: Double): BlockProgress {
+        val blocks = profile.blocks.sortedBy { it.blockNumber }
+        val currentIndex = blocks.indexOfFirst { block -> block.maxKwh == null || cumulativePaidKwh < block.maxKwh }
+        if (currentIndex < 0) return BlockProgress(null, null)
+        val current = blocks[currentIndex]
+        val remaining = current.maxKwh?.let { (it - cumulativePaidKwh.coerceAtLeast(current.minKwh)).coerceAtLeast(0.0) }
+        val nextRate = blocks.getOrNull(currentIndex + 1)?.rateCentsPerKwh
+        return BlockProgress(remaining, nextRate)
     }
 
     private fun vatFromGross(grossAmountRand: Double, profile: TariffProfile): Double = if (profile.vatInclusiveRates) {
@@ -498,4 +582,7 @@ object CalculationEngine {
     }
 
     private fun Double.finiteOrZero(): Double = if (isFinite()) this else 0.0
+
+    private data class FbeAllocation(val unitsKwh: Double, val reason: String?)
+    private data class BlockProgress(val remainingKwh: Double?, val nextRateCentsPerKwh: Double?)
 }

@@ -36,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.smartelectricity.data.model.CalculationMode
 import com.example.smartelectricity.data.model.Distributor
+import com.example.smartelectricity.data.model.TariffProfile
+import com.example.smartelectricity.data.model.isCalculationSupported
+import com.example.smartelectricity.data.db.MonthlyBlockLedgerEntity
 import com.example.smartelectricity.data.repository.TariffRepository
 import com.example.smartelectricity.domain.calculator.CalculationEngine
 import com.example.smartelectricity.domain.insights.EnergyInsights
@@ -46,6 +49,9 @@ import java.util.Calendar
 fun HomeScreen(
     currentSpentRand: Double = 650.0,
     budgetLimitRand: Double = 1500.0,
+    activeHouseholdName: String? = null,
+    activeProfile: TariffProfile? = null,
+    activeLedger: MonthlyBlockLedgerEntity? = null,
     onUpdateBudgetLimit: (Double) -> Unit = {},
     onOpenWeeklyTracker: () -> Unit = {},
     onStartCalculator: (CalculationMode) -> Unit,
@@ -66,7 +72,7 @@ fun HomeScreen(
 
     val quickResult = remember(quickRandInput, quickDistributor) {
         val amount = quickRandInput.toDoubleOrNull() ?: 0.0
-        val profile = quickDistributor.profiles.firstOrNull()
+        val profile = quickDistributor.profiles.firstOrNull { it.isCalculationSupported }
         if (amount > 0 && profile != null) {
             CalculationEngine.calculateRandToKwh(
                 distributor = quickDistributor,
@@ -146,6 +152,17 @@ fun HomeScreen(
                     onCalculate = { onStartCalculator(CalculationMode.RAND_TO_KWH) },
                     onEstimate = { onStartCalculator(CalculationMode.KWH_TO_RAND) }
                 )
+            }
+
+            if (activeHouseholdName != null && activeProfile != null) {
+                item {
+                    MonthlyBlockProgressCard(
+                        householdName = activeHouseholdName,
+                        profile = activeProfile,
+                        ledger = activeLedger,
+                        onOpenHouseholds = onOpenHouseholds
+                    )
+                }
             }
 
             item {
@@ -279,6 +296,72 @@ fun HomeScreen(
             },
             dismissButton = { TextButton(onClick = { showBudgetDialog = false }) { Text("Cancel") } }
         )
+    }
+}
+
+@Composable
+private fun MonthlyBlockProgressCard(
+    householdName: String,
+    profile: TariffProfile,
+    ledger: MonthlyBlockLedgerEntity?,
+    onOpenHouseholds: () -> Unit
+) {
+    val paidUnits = ledger?.paidUnitsAllocatedKwh ?: 0.0
+    val blocks = profile.blocks.sortedBy { it.blockNumber }
+    val currentIndex = blocks.indexOfFirst { it.maxKwh == null || paidUnits < it.maxKwh }.coerceAtLeast(0)
+    val currentBlock = blocks.getOrNull(currentIndex)
+    val usedInBlock = currentBlock?.let { (paidUnits - it.minKwh).coerceAtLeast(0.0) } ?: 0.0
+    val blockCapacity = currentBlock?.maxKwh?.let { it - currentBlock.minKwh }
+    val progress = blockCapacity?.takeIf { it > 0.0 }?.let { (usedInBlock / it).toFloat().coerceIn(0f, 1f) } ?: 1f
+    val remaining = blockCapacity?.let { (it - usedInBlock).coerceAtLeast(0.0) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f))
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("LIVE MONTHLY LEDGER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                    Text(householdName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(profile.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = onOpenHouseholds) { Text("Switch") }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("${"%.1f".format(paidUnits)} kWh", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                    Text("paid units this month", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Block ${currentBlock?.blockNumber ?: 1}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("${"%.2f".format(currentBlock?.rateCentsPerKwh ?: 0.0)} c/kWh", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(9.dp).clip(CircleShape),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surface
+            )
+
+            Text(
+                text = remaining?.let { "${"%.1f".format(it)} kWh remaining before the next price block." }
+                    ?: "You are in the tariff's open-ended top block.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (ledger == null) {
+                Text("Record your next completed purchase to start automatic block tracking.", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 

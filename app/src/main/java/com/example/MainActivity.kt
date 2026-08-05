@@ -55,6 +55,7 @@ fun MainAppScreen(
     val alertsList by viewModel.tariffAlerts.collectAsStateWithLifecycle()
     val monthlySpendingTotal by viewModel.monthlySpendingTotal.collectAsStateWithLifecycle()
     val weeklySpends by viewModel.weeklySpends.collectAsStateWithLifecycle()
+    val activeLedger by viewModel.activeLedger.collectAsStateWithLifecycle()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
@@ -87,6 +88,9 @@ fun MainAppScreen(
                 HomeScreen(
                     currentSpentRand = monthlySpendingTotal,
                     budgetLimitRand = state.monthlyBudgetLimitRand,
+                    activeHouseholdName = state.activeHousehold?.nickname,
+                    activeProfile = state.selectedProfile,
+                    activeLedger = activeLedger,
                     onUpdateBudgetLimit = { viewModel.setMonthlyBudgetLimit(it) },
                     onOpenWeeklyTracker = { navController.navigate("weekly_tracking") },
                     onStartCalculator = { mode ->
@@ -169,6 +173,9 @@ fun MainAppScreen(
                 ResultScreen(
                     result = state.activeResult,
                     onOpenReconcile = { navController.navigate("reconcile") },
+                    onRecordPurchase = { viewModel.recordActivePurchase() },
+                    purchaseSaveMessage = state.purchaseSaveMessage,
+                    isPurchaseRecorded = state.isActiveResultRecorded,
                     onSaveHouseholdClick = { navController.navigate("households") },
                     onBackToHome = { navController.navigate("home") }
                 )
@@ -188,7 +195,9 @@ fun MainAppScreen(
                     households = households,
                     activeHousehold = state.activeHousehold,
                     onSelectHousehold = { viewModel.selectHousehold(it) },
-                    onSaveHousehold = { name, suburb -> viewModel.saveHousehold(name, suburb) },
+                    onSaveHousehold = { name, suburb, propertyValue, averageKwh ->
+                        viewModel.saveHousehold(name, suburb, propertyValue, averageKwh)
+                    },
                     onBack = { navController.popBackStack() }
                 )
             }
