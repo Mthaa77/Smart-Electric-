@@ -1,23 +1,22 @@
 package com.example.smartelectricity.ui.screens.home
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.*
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,20 +26,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.smartelectricity.data.model.CalculationMode
 import com.example.smartelectricity.data.model.Distributor
 import com.example.smartelectricity.data.repository.TariffRepository
 import com.example.smartelectricity.domain.calculator.CalculationEngine
-import com.example.smartelectricity.ui.components.MonthlyBudgetProgressBarCard
-import com.example.smartelectricity.ui.components.MonthlyConsumptionChartCard
+import com.example.smartelectricity.domain.insights.EnergyInsights
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,764 +53,311 @@ fun HomeScreen(
     onOpenReconcile: () -> Unit,
     onOpenFbeGuide: () -> Unit,
     onOpenAlerts: () -> Unit,
-    onOpenAdmin: () -> Unit
+    onOpenAdmin: () -> Unit,
+    onOpenTools: () -> Unit = {},
+    onOpenBudgetForecast: () -> Unit = {},
+    onOpenHouseholds: () -> Unit = {},
+    onOpenConcepts: () -> Unit = {}
 ) {
     var quickRandInput by remember { mutableStateOf("200") }
-    var selectedDistributorForQuickCalc by remember { mutableStateOf(TariffRepository.distributors.first()) }
-    var quickCalcResult by remember { mutableStateOf<Double?>(null) }
+    var quickDistributor by remember { mutableStateOf(TariffRepository.distributors.first()) }
+    var showBudgetDialog by remember { mutableStateOf(false) }
+    var budgetInput by remember(budgetLimitRand) { mutableStateOf(budgetLimitRand.toInt().toString()) }
 
-    // Calculate quick estimation when input or distributor changes
-    LaunchedEffect(quickRandInput, selectedDistributorForQuickCalc) {
+    val quickResult = remember(quickRandInput, quickDistributor) {
         val amount = quickRandInput.toDoubleOrNull() ?: 0.0
-        if (amount > 0 && selectedDistributorForQuickCalc.profiles.isNotEmpty()) {
-            val profile = selectedDistributorForQuickCalc.profiles.first()
-            val result = CalculationEngine.calculateRandToKwh(
-                distributor = selectedDistributorForQuickCalc,
+        val profile = quickDistributor.profiles.firstOrNull()
+        if (amount > 0 && profile != null) {
+            CalculationEngine.calculateRandToKwh(
+                distributor = quickDistributor,
                 profile = profile,
                 amountRand = amount,
                 isFirstPurchaseOfMonth = true,
                 hasClaimedFbeThisMonth = false
-            )
-            quickCalcResult = result.totalKwh
-        } else {
-            quickCalcResult = null
-        }
+            ).totalKwh
+        } else null
     }
-
-    // Infinite pulsing animation for live status dot
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val alphaPulse by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alphaPulse"
+    val calendar = remember { Calendar.getInstance() }
+    val forecast = EnergyInsights.forecastMonthlyBudget(
+        currentSpendRand = currentSpentRand,
+        monthlyBudgetRand = budgetLimitRand,
+        dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH),
+        daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    )
+    val animatedProgress by animateFloatAsState(
+        targetValue = forecast.progressFraction,
+        animationSpec = tween(700),
+        label = "budget-progress"
     )
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(
                                     Brush.linearGradient(
-                                        listOf(
-                                            MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.secondary
-                                        )
+                                        listOf(Color(0xFF006DFF), Color(0xFF6946FF), Color(0xFFFF4D8D))
                                     )
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ElectricBolt,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            Icon(Icons.Default.ElectricBolt, null, tint = Color.White)
                         }
+                        Spacer(Modifier.width(11.dp))
                         Column {
+                            Text("Smart Electric", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                             Text(
-                                text = "Smart Electricity",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold
+                                "Your energy co-pilot",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF16A34A).copy(alpha = alphaPulse))
-                                )
-                                Text(
-                                    text = "RSA 2026/27 NERSA Active",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 10.sp
-                                )
-                            }
                         }
                     }
                 },
                 actions = {
-                    Surface(
-                        onClick = onOpenAdmin,
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AdminPanelSettings,
-                                contentDescription = "Evidence Studio",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "Studio",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                    IconButton(onClick = onOpenAdmin) {
+                        Icon(Icons.Default.AdminPanelSettings, contentDescription = "Tariff evidence")
                     }
-
                     IconButton(onClick = onOpenAlerts) {
-                        BadgedBox(
-                            badge = {
-                                Badge(containerColor = Color(0xFFDC2626)) {
-                                    Text("2", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = "Tariff Alerts"
-                            )
+                        BadgedBox(badge = { Badge() }) {
+                            Icon(Icons.Outlined.Notifications, contentDescription = "Tariff alerts")
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding = PaddingValues(bottom = 32.dp)
+                .padding(paddingValues),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Live Rates Ticker Row
             item {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primary
-                        ) {
-                            Text(
-                                text = "LIVE RATES",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 9.sp,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            item { TickerItem("Eskom Homelight", "343.61 c/kWh") }
-                            item { TickerItem("Cape Town Domestic", "413.79 c/kWh") }
-                            item { TickerItem("Tshwane Block 1", "324.12 c/kWh") }
-                            item { TickerItem("Joburg Prepaid", "278.40 c/kWh") }
-                            item { TickerItem("eThekwini Single", "328.70 c/kWh") }
-                        }
-                    }
-                }
-            }
-
-            // Cinematic Hero Banner Card with Image Background & Scrim
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(8.dp, shape = RoundedCornerShape(24.dp)),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(280.dp)
-                    ) {
-                        // Background Hero Image
-                        Image(
-                            painter = painterResource(id = R.drawable.img_hero_electricity),
-                            contentDescription = "Electricity Grid Backdrop",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        // Gradient Scrim Overlay for optimal legibility
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color(0x770F172A),
-                                            Color(0xDD0F172A),
-                                            Color(0xFA0F172A)
-                                        )
-                                    )
-                                )
-                        )
-
-                        // Content Overlay
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(20.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Top Tag Badge
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    color = Color(0xFF0284C7).copy(alpha = 0.9f),
-                                    shape = RoundedCornerShape(20.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Verified,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Text(
-                                            text = "Official 2026/2027 Schedule Active",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
-                                ) {
-                                    Text(
-                                        text = "Eskom & Metros",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White.copy(alpha = 0.9f),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-
-                            // Headline & Subtitle
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = "Know what every rand buys.",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    fontSize = 24.sp
-                                )
-                                Text(
-                                    text = "Calculate exact prepaid token units, fixed charge deductions & monthly price blocks across South Africa.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    maxLines = 2
-                                )
-                            }
-
-                            // Action Buttons
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Button(
-                                    onClick = { onStartCalculator(CalculationMode.RAND_TO_KWH) },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF0284C7)
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Calculate,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Calculate Units", fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-
-                                Button(
-                                    onClick = { onStartCalculator(CalculationMode.KWH_TO_RAND) },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color.White.copy(alpha = 0.15f)
-                                    ),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Payments,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Estimate Rand", fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Quick In-Page Rand Estimator Box
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FlashOn,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "Quick In-Page Estimator",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            Text(
-                                text = selectedDistributorForQuickCalc.name,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Distributor Selector Pills
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(TariffRepository.distributors) { dist ->
-                                val isSelected = dist.id == selectedDistributorForQuickCalc.id
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { selectedDistributorForQuickCalc = dist },
-                                    label = { Text(dist.name, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = quickRandInput,
-                                onValueChange = { quickRandInput = it },
-                                label = { Text("Tender Amount (R)") },
-                                prefix = { Text("R ") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("quick_rand_input"),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-
-                            // Quick Preset Amount Buttons
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                listOf("100", "200", "500").forEach { preset ->
-                                    SuggestionChip(
-                                        onClick = { quickRandInput = preset },
-                                        label = { Text("R$preset", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                                    )
-                                }
-                            }
-                        }
-
-                        // Instant Result Box
-                        quickCalcResult?.let { kwh ->
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "Estimated Token Units",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "R$quickRandInput → ${"%.2f".format(kwh)} kWh",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-
-                                    Button(
-                                        onClick = { onStartCalculator(CalculationMode.RAND_TO_KWH) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Text("Full Breakdown", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Monthly Electricity Budget Progress Bar
-            item {
-                MonthlyBudgetProgressBarCard(
-                    currentSpentRand = currentSpentRand,
-                    budgetLimitRand = budgetLimitRand,
-                    onUpdateBudgetLimit = onUpdateBudgetLimit
+                HeroCard(
+                    onCalculate = { onStartCalculator(CalculationMode.RAND_TO_KWH) },
+                    onEstimate = { onStartCalculator(CalculationMode.KWH_TO_RAND) }
                 )
             }
 
-            // 6-Month Consumption Trend Bar Chart Data Visualization
             item {
-                MonthlyConsumptionChartCard()
+                BudgetPulseCard(
+                    spent = currentSpentRand,
+                    budget = budgetLimitRand,
+                    projected = forecast.projectedMonthEndRand,
+                    progress = animatedProgress,
+                    isOnTrack = forecast.isOnTrack,
+                    onClick = { showBudgetDialog = true },
+                    onOpenForecast = onOpenBudgetForecast
+                )
             }
 
-            // Weekly Consumption Tracker Feature Banner
             item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenWeeklyTracker() },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                    ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.TrendingUp,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
+                SectionTitle(
+                    eyebrow = "QUICK ESTIMATE",
+                    title = "What will my rand buy?",
+                    action = "Full calculator",
+                    onAction = { onStartCalculator(CalculationMode.RAND_TO_KWH) }
+                )
+            }
 
-                            Column {
-                                Text(
-                                    text = "Weekly Consumption Tracker",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Log weekly spend & visualize kWh trends",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "Open Weekly Tracker",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+            item {
+                QuickEstimatorCard(
+                    amount = quickRandInput,
+                    onAmountChange = { quickRandInput = it },
+                    selectedDistributor = quickDistributor,
+                    onDistributorChange = { quickDistributor = it },
+                    estimatedKwh = quickResult,
+                    onContinue = {
+                        onSelectDistributor(quickDistributor)
                     }
-                }
+                )
             }
 
-            // Quick Diagnostic Tools
             item {
-                Text(
-                    text = "Quick Diagnostic Tools",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                SectionTitle(
+                    eyebrow = "SMART TOOLS",
+                    title = "Make every unit work harder",
+                    action = "Open tools",
+                    onAction = onOpenTools
                 )
             }
 
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onOpenReconcile() },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ReceiptLong,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Text(
-                                text = "Why fewer units?",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                            Text(
-                                text = "Diagnose token receipts, fixed charge deductions, or block escalations.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
+                    SmartToolCard(
+                        title = "Appliance\nCost Lab",
+                        subtitle = "See what your heater, geyser or TV costs.",
+                        icon = Icons.Default.Bolt,
+                        colors = listOf(Color(0xFF2854FF), Color(0xFF8748FF)),
+                        onClick = onOpenTools
+                    )
+                    SmartToolCard(
+                        title = "Monthly\nForecast",
+                        subtitle = "Know your safe daily budget and month-end spend.",
+                        icon = Icons.Default.AutoGraph,
+                        colors = listOf(Color(0xFF008879), Color(0xFF16B982)),
+                        onClick = onOpenBudgetForecast
+                    )
+                }
+            }
 
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onOpenFbeGuide() },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VolunteerActivism,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Text(
-                                text = "Free Basic Electricity",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = "Check if your household qualifies for 50-100 kWh free monthly units.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
+            item {
+                SectionTitle(eyebrow = "EXPLORE", title = "Everything in one place")
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        QuickLinkCard("Weekly tracker", "Log top-ups", Icons.Default.CalendarMonth, Modifier.weight(1f), onOpenWeeklyTracker)
+                        QuickLinkCard("Households", "Save meter profiles", Icons.Default.HomeWork, Modifier.weight(1f), onOpenHouseholds)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        QuickLinkCard("FBE guide", "Check free units", Icons.Default.VolunteerActivism, Modifier.weight(1f), onOpenFbeGuide)
+                        QuickLinkCard("Learn", "Understand tariffs", Icons.Default.School, Modifier.weight(1f), onOpenConcepts)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        QuickLinkCard("Check a token", "Compare expected units", Icons.Default.FactCheck, Modifier.weight(1f), onOpenReconcile)
+                        QuickLinkCard("Rate alerts", "See official changes", Icons.Default.NotificationsActive, Modifier.weight(1f), onOpenAlerts)
                     }
                 }
             }
 
-            // Priority Distributors
+            item {
+                SectionTitle(eyebrow = "COVERAGE", title = "Built for South African tariffs")
+            }
+
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "Priority Electricity Distributors",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "${TariffRepository.distributors.size} Supported",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(TariffRepository.distributors) { dist ->
-                        Card(
-                            modifier = Modifier
-                                .width(220.dp)
-                                .clickable { onSelectDistributor(dist) },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                try {
-                                                    Color(android.graphics.Color.parseColor(dist.logoAccentColorHex))
-                                                } catch (e: Exception) {
-                                                    MaterialTheme.colorScheme.primary
-                                                }
-                                            )
-                                    )
-                                    Text(
-                                        text = dist.province,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                Text(
-                                    text = dist.name,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Text(
-                                    text = "${dist.profiles.size} Verified Tariff Profiles",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = dist.recognitionClue,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(6.dp),
-                                        maxLines = 2
-                                    )
-                                }
-                            }
-                        }
+                    TariffRepository.distributors.forEach { distributor ->
+                        DistributorChip(distributor = distributor, onClick = { onSelectDistributor(distributor) })
                     }
                 }
             }
+        }
+    }
 
-            // Explainer Cards
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
+    if (showBudgetDialog) {
+        AlertDialog(
+            onDismissRequest = { showBudgetDialog = false },
+            icon = { Icon(Icons.Default.Savings, null) },
+            title = { Text("Set your monthly target", fontWeight = FontWeight.Black) },
+            text = {
+                OutlinedTextField(
+                    value = budgetInput,
+                    onValueChange = { budgetInput = it.filter { char -> char.isDigit() || char == '.' } },
+                    label = { Text("Electricity budget") },
+                    prefix = { Text("R ") },
+                    singleLine = true,
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    budgetInput.toDoubleOrNull()?.takeIf { it > 0 }?.let(onUpdateBudgetLimit)
+                    showBudgetDialog = false
+                }) { Text("Save target") }
+            },
+            dismissButton = { TextButton(onClick = { showBudgetDialog = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun HeroCard(onCalculate: () -> Unit, onEstimate: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(16.dp, RoundedCornerShape(30.dp), ambientColor = Color(0x330064FF), spotColor = Color(0x440064FF)),
+        shape = RoundedCornerShape(30.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF071A3A))
+    ) {
+        Box(Modifier.fillMaxWidth().height(330.dp)) {
+            Image(
+                painter = painterResource(R.drawable.img_hero_electricity),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0x55020C20), Color(0xD907193A), Color(0xFF071A3A))
                         )
-                        Column {
-                            Text(
-                                text = "Why token units change every purchase",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "When you buy electricity multiple times in a calendar month, your distributor accumulates your usage into higher rate blocks or recovers fixed monthly fees on the 1st purchase.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    )
+            )
+            Column(
+                modifier = Modifier.fillMaxSize().padding(21.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Surface(color = Color(0xFF6FF0BC).copy(alpha = 0.18f), shape = CircleShape) {
+                        Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Verified, null, Modifier.size(15.dp), Color(0xFF74EFC0))
+                            Spacer(Modifier.width(6.dp))
+                            Text("2026/27 rates active", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFB9FFE2))
+                        }
+                    }
+                    Surface(color = Color.White.copy(alpha = 0.12f), shape = CircleShape) {
+                        Icon(Icons.Default.AutoAwesome, null, Modifier.padding(9.dp).size(18.dp), Color(0xFFFFD866))
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text(
+                        "Electricity,\nfinally made simple.",
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White
+                    )
+                    Text(
+                        "Know what every rand buys, understand deductions and plan your month with confidence.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.76f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = onCalculate,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C70FF))
+                        ) {
+                            Icon(Icons.Default.Calculate, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text("Calculate", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = onEstimate,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        ) {
+                            Text("Plan kWh", fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(5.dp))
+                            Icon(Icons.Default.ArrowForward, null, Modifier.size(17.dp))
                         }
                     }
                 }
@@ -821,23 +367,232 @@ fun HomeScreen(
 }
 
 @Composable
-private fun TickerItem(label: String, rate: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+private fun BudgetPulseCard(
+    spent: Double,
+    budget: Double,
+    projected: Double,
+    progress: Float,
+    isOnTrack: Boolean,
+    onClick: () -> Unit,
+    onOpenForecast: () -> Unit
+) {
+    val accent = if (isOnTrack) Color(0xFF0AA873) else Color(0xFFFF7043)
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = 2.dp
     ) {
-        Text(
-            text = "$label:",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp
-        )
-        Text(
-            text = rate,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 11.sp
-        )
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(13.dp), color = accent.copy(alpha = 0.13f)) {
+                        Icon(Icons.Default.AccountBalanceWallet, null, Modifier.padding(9.dp).size(21.dp), accent)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Monthly pulse", fontWeight = FontWeight.Black)
+                        Text(if (isOnTrack) "Looking healthy" else "Needs attention", style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
+                    }
+                }
+                TextButton(onClick = onOpenForecast) { Text("Forecast") }
+            }
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape),
+                color = accent,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                BudgetStat("Spent", "R${"%,.0f".format(spent)}")
+                BudgetStat("Target", "R${"%,.0f".format(budget)}")
+                BudgetStat("Projected", "R${"%,.0f".format(projected)}", Alignment.End)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BudgetStat(label: String, value: String, alignment: Alignment.Horizontal = Alignment.Start) {
+    Column(horizontalAlignment = alignment) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun QuickEstimatorCard(
+    amount: String,
+    onAmountChange: (String) -> Unit,
+    selectedDistributor: Distributor,
+    onDistributorChange: (Distributor) -> Unit,
+    estimatedKwh: Double?,
+    onContinue: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Surface(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { expanded = true },
+                    shape = RoundedCornerShape(15.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.LocationCity, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Distributor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(selectedDistributor.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Icon(Icons.Default.ExpandMore, null)
+                    }
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    TariffRepository.distributors.forEach { distributor ->
+                        DropdownMenuItem(
+                            text = { Text(distributor.name) },
+                            leadingIcon = { Icon(Icons.Default.ElectricMeter, null) },
+                            onClick = { onDistributorChange(distributor); expanded = false }
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { onAmountChange(it.filter { char -> char.isDigit() || char == '.' }) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Top-up amount") },
+                prefix = { Text("R ") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Estimated token", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            estimatedKwh?.let { "${"%.2f".format(it)} kWh" } ?: "— kWh",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    FilledIconButton(onClick = onContinue) {
+                        Icon(Icons.Default.ArrowForward, contentDescription = "Continue in calculator")
+                    }
+                }
+            }
+            Text(
+                "Quick estimate uses the first tariff profile and assumes the first purchase of the month.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SmartToolCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    colors: List<Color>,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.width(235.dp).height(175.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(25.dp),
+        color = Color.Transparent
+    ) {
+        Box(Modifier.fillMaxSize().background(Brush.linearGradient(colors)).padding(18.dp)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.16f)) {
+                    Icon(icon, null, Modifier.padding(10.dp).size(22.dp), Color.White)
+                }
+                Column {
+                    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = Color.White)
+                    Spacer(Modifier.height(4.dp))
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.78f))
+                }
+            }
+            Icon(Icons.Default.ArrowOutward, null, Modifier.align(Alignment.TopEnd).size(20.dp), Color.White.copy(alpha = 0.8f))
+        }
+    }
+}
+
+@Composable
+private fun QuickLinkCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)) {
+                Icon(icon, null, Modifier.padding(8.dp).size(19.dp), MaterialTheme.colorScheme.primary)
+            }
+            Column {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DistributorChip(distributor: Distributor, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.width(195.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                Icon(Icons.Default.ElectricMeter, null, Modifier.padding(9.dp).size(20.dp), MaterialTheme.colorScheme.secondary)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(distributor.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(distributor.province, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+            Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(
+    eyebrow: String,
+    title: String,
+    action: String? = null,
+    onAction: () -> Unit = {}
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+        Column {
+            Text(eyebrow, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        }
+        if (action != null) {
+            TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                Text(action)
+                Icon(Icons.Default.ChevronRight, null, Modifier.size(17.dp))
+            }
+        }
     }
 }

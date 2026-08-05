@@ -50,8 +50,8 @@ fun CalculatorWizardScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Guided Calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Step $step of 5: ${getStepTitle(step)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Text("Guided calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        Text("Step $step of 5 · ${getStepTitle(step)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 navigationIcon = {
@@ -59,24 +59,6 @@ fun CalculatorWizardScreen(
                         if (step > 1) step-- else onBackToHome()
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    Row(
-                        modifier = Modifier.padding(end = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(
-                            selected = state.calculationMode == CalculationMode.RAND_TO_KWH,
-                            onClick = { onSetMode(CalculationMode.RAND_TO_KWH) },
-                            label = { Text("Rand → kWh") }
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        FilterChip(
-                            selected = state.calculationMode == CalculationMode.KWH_TO_RAND,
-                            onClick = { onSetMode(CalculationMode.KWH_TO_RAND) },
-                            label = { Text("kWh → Rand") }
-                        )
                     }
                 }
             )
@@ -96,7 +78,7 @@ fun CalculatorWizardScreen(
                     if (step > 1) {
                         OutlinedButton(
                             onClick = { step-- },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Text("Previous")
                         }
@@ -107,7 +89,7 @@ fun CalculatorWizardScreen(
                     if (step < 5) {
                         Button(
                             onClick = { step++ },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Text("Next Step")
                             Spacer(modifier = Modifier.width(4.dp))
@@ -119,7 +101,7 @@ fun CalculatorWizardScreen(
                                 onRunCalculation()
                                 onCalculationDone()
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             )
@@ -133,41 +115,70 @@ fun CalculatorWizardScreen(
             }
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            when (step) {
-                1 -> Step1SupplierSelection(
-                    state = state,
-                    onSelectDistributor = { dist ->
-                        onSelectDistributor(dist)
-                        step = 2
-                    }
+            LinearProgressIndicator(
+                progress = { step / 5f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = state.calculationMode == CalculationMode.RAND_TO_KWH,
+                    onClick = { onSetMode(CalculationMode.RAND_TO_KWH) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    label = { Text("Rand → kWh", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.Payments, null, Modifier.size(16.dp)) }
                 )
-                2 -> Step2ProfileSelection(
-                    state = state,
-                    onSelectProfile = { prof ->
-                        onSelectProfile(prof)
-                        step = 3
-                    }
+                SegmentedButton(
+                    selected = state.calculationMode == CalculationMode.KWH_TO_RAND,
+                    onClick = { onSetMode(CalculationMode.KWH_TO_RAND) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    label = { Text("kWh → Rand", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.ElectricBolt, null, Modifier.size(16.dp)) }
                 )
-                3 -> Step3AmountEntry(
-                    state = state,
-                    onSetAmount = onSetAmount,
-                    onSetFirstPurchase = onSetFirstPurchase,
-                    onSetHasClaimedFbe = onSetHasClaimedFbe
-                )
-                4 -> Step4FbeQuestions(
-                    state = state,
-                    onSetIsIndigent = onSetIsIndigent
-                )
-                5 -> Step5ReviewAssumptions(
-                    state = state,
-                    onEditStep = { step = it }
-                )
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                when (step) {
+                    1 -> Step1SupplierSelection(
+                        state = state,
+                        onSelectDistributor = { dist ->
+                            onSelectDistributor(dist)
+                            step = 2
+                        }
+                    )
+                    2 -> Step2ProfileSelection(
+                        state = state,
+                        onSelectProfile = { prof ->
+                            onSelectProfile(prof)
+                            step = 3
+                        }
+                    )
+                    3 -> Step3AmountEntry(
+                        state = state,
+                        onSetAmount = onSetAmount,
+                        onSetFirstPurchase = onSetFirstPurchase,
+                        onSetHasClaimedFbe = onSetHasClaimedFbe
+                    )
+                    4 -> Step4FbeQuestions(
+                        state = state,
+                        onSetIsIndigent = onSetIsIndigent
+                    )
+                    5 -> Step5ReviewAssumptions(
+                        state = state,
+                        onEditStep = { step = it }
+                    )
+                }
             }
         }
     }
