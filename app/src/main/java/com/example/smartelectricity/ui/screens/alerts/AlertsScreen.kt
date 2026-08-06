@@ -1,5 +1,6 @@
 package com.example.smartelectricity.ui.screens.alerts
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,7 +54,9 @@ fun AlertsScreen(
                     }
 
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !alert.isRead) { onMarkAsRead(alert.id) },
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
@@ -116,6 +119,15 @@ fun AlertsScreen(
                                     text = alert.sourceDocumentTitle,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            if (!alert.isRead) {
+                                Text(
+                                    text = "Tap to mark as read",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }

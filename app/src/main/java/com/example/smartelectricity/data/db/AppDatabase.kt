@@ -56,11 +56,17 @@ interface PurchaseLedgerDao {
     @Query("SELECT COALESCE(SUM(tenderAmountRand), 0.0) FROM prepaid_purchases WHERE yearMonth = :yearMonth")
     fun observeTotalSpendForMonth(yearMonth: String): Flow<Double>
 
+    @Query("SELECT COALESCE(SUM(tenderAmountRand), 0.0) FROM prepaid_purchases WHERE householdId = :householdId AND yearMonth = :yearMonth")
+    fun observeTotalSpendForHouseholdMonth(householdId: Int, yearMonth: String): Flow<Double>
+
     @Query("SELECT * FROM prepaid_purchases WHERE householdId = :householdId ORDER BY purchaseTimestamp DESC")
     fun observePurchasesForHousehold(householdId: Int): Flow<List<PrepaidPurchaseEntity>>
 
     @Insert
     suspend fun insertPurchase(purchase: PrepaidPurchaseEntity): Long
+
+    @Query("UPDATE prepaid_purchases SET actualUnitsKwh = :actualUnitsKwh WHERE id = :purchaseId")
+    suspend fun updateActualUnits(purchaseId: Long, actualUnitsKwh: Double)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertLedger(ledger: MonthlyBlockLedgerEntity)

@@ -38,10 +38,13 @@ import com.example.smartelectricity.data.model.CalculationMode
 import com.example.smartelectricity.data.model.Distributor
 import com.example.smartelectricity.data.model.TariffProfile
 import com.example.smartelectricity.data.model.isCalculationSupported
+import com.example.smartelectricity.data.db.HouseholdEntity
 import com.example.smartelectricity.data.db.MonthlyBlockLedgerEntity
 import com.example.smartelectricity.data.repository.TariffRepository
 import com.example.smartelectricity.domain.calculator.CalculationEngine
 import com.example.smartelectricity.domain.insights.EnergyInsights
+import com.example.smartelectricity.ui.components.LiquidGlassPanel
+import com.example.smartelectricity.ui.components.premiumDepth
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,37 +52,37 @@ import java.util.Calendar
 fun HomeScreen(
     currentSpentRand: Double = 650.0,
     budgetLimitRand: Double = 1500.0,
-    activeHouseholdName: String? = null,
+    activeHousehold: HouseholdEntity? = null,
+    activeDistributor: Distributor,
     activeProfile: TariffProfile? = null,
     activeLedger: MonthlyBlockLedgerEntity? = null,
     onUpdateBudgetLimit: (Double) -> Unit = {},
-    onOpenWeeklyTracker: () -> Unit = {},
     onStartCalculator: (CalculationMode) -> Unit,
-    onSelectDistributor: (Distributor) -> Unit,
-    onOpenReconcile: () -> Unit,
-    onOpenFbeGuide: () -> Unit,
-    onOpenAlerts: () -> Unit,
-    onOpenAdmin: () -> Unit,
+    onRunQuickEstimate: (String, Distributor) -> Unit,
     onOpenTools: () -> Unit = {},
     onOpenBudgetForecast: () -> Unit = {},
-    onOpenHouseholds: () -> Unit = {},
-    onOpenConcepts: () -> Unit = {}
+    onOpenHouseholds: () -> Unit = {}
 ) {
     var quickRandInput by remember { mutableStateOf("200") }
-    var quickDistributor by remember { mutableStateOf(TariffRepository.distributors.first()) }
+    var quickDistributor by remember(activeDistributor.id) { mutableStateOf(activeDistributor) }
     var showBudgetDialog by remember { mutableStateOf(false) }
     var budgetInput by remember(budgetLimitRand) { mutableStateOf(budgetLimitRand.toInt().toString()) }
 
-    val quickResult = remember(quickRandInput, quickDistributor) {
+    val quickResult = remember(quickRandInput, quickDistributor, activeProfile, activeLedger, activeHousehold) {
         val amount = quickRandInput.toDoubleOrNull() ?: 0.0
-        val profile = quickDistributor.profiles.firstOrNull { it.isCalculationSupported }
+        val profile = activeProfile?.takeIf { activeHousehold != null && it.distributorId == quickDistributor.id && it.isCalculationSupported }
+            ?: quickDistributor.profiles.firstOrNull { it.isCalculationSupported }
         if (amount > 0 && profile != null) {
             CalculationEngine.calculateRandToKwh(
                 distributor = quickDistributor,
                 profile = profile,
                 amountRand = amount,
-                isFirstPurchaseOfMonth = true,
-                hasClaimedFbeThisMonth = false
+                isFirstPurchaseOfMonth = activeHousehold == null || activeLedger?.lastPurchaseAt == null,
+                hasClaimedFbeThisMonth = (activeLedger?.freeUnitsAllocatedKwh ?: 0.0) > 0.0,
+                isIndigentEligible = activeHousehold?.isIndigentRegistered ?: false,
+                propertyValuationRand = activeHousehold?.propertyValuationRand ?: 0.0,
+                historicAverageMonthlyKwh = activeHousehold?.estimatedMonthlyKwh,
+                unitsAlreadyAllocatedThisMonth = activeLedger?.paidUnitsAllocatedKwh ?: 0.0
             ).totalKwh
         } else null
     }
@@ -126,16 +129,6 @@ fun HomeScreen(
                         }
                     }
                 },
-                actions = {
-                    IconButton(onClick = onOpenAdmin) {
-                        Icon(Icons.Default.AdminPanelSettings, contentDescription = "Tariff evidence")
-                    }
-                    IconButton(onClick = onOpenAlerts) {
-                        BadgedBox(badge = { Badge() }) {
-                            Icon(Icons.Outlined.Notifications, contentDescription = "Tariff alerts")
-                        }
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
@@ -154,27 +147,17 @@ fun HomeScreen(
                 )
             }
 
-            if (activeHouseholdName != null && activeProfile != null) {
+            if (activeHousehold != null && activeProfile != null) {
                 item {
                     MonthlyBlockProgressCard(
-                        householdName = activeHouseholdName,
+                        householdName = activeHousehold.nickname,
                         profile = activeProfile,
                         ledger = activeLedger,
                         onOpenHouseholds = onOpenHouseholds
                     )
                 }
-            }
-
-            item {
-                BudgetPulseCard(
-                    spent = currentSpentRand,
-                    budget = budgetLimitRand,
-                    projected = forecast.projectedMonthEndRand,
-                    progress = animatedProgress,
-                    isOnTrack = forecast.isOnTrack,
-                    onClick = { showBudgetDialog = true },
-                    onOpenForecast = onOpenBudgetForecast
-                )
+            } else {
+                item { HouseholdSetupNudge(onOpenHouseholds = onOpenHouseholds) }
             }
 
             item {
@@ -194,8 +177,20 @@ fun HomeScreen(
                     onDistributorChange = { quickDistributor = it },
                     estimatedKwh = quickResult,
                     onContinue = {
-                        onSelectDistributor(quickDistributor)
+                        onRunQuickEstimate(quickRandInput, quickDistributor)
                     }
+                )
+            }
+
+            item {
+                BudgetPulseCard(
+                    spent = currentSpentRand,
+                    budget = budgetLimitRand,
+                    projected = forecast.projectedMonthEndRand,
+                    progress = animatedProgress,
+                    isOnTrack = forecast.isOnTrack,
+                    onClick = { showBudgetDialog = true },
+                    onOpenForecast = onOpenBudgetForecast
                 )
             }
 
@@ -232,43 +227,6 @@ fun HomeScreen(
                 }
             }
 
-            item {
-                SectionTitle(eyebrow = "EXPLORE", title = "Everything in one place")
-            }
-
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QuickLinkCard("Weekly tracker", "Log top-ups", Icons.Default.CalendarMonth, Modifier.weight(1f), onOpenWeeklyTracker)
-                        QuickLinkCard("Households", "Save meter profiles", Icons.Default.HomeWork, Modifier.weight(1f), onOpenHouseholds)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QuickLinkCard("FBE guide", "Check free units", Icons.Default.VolunteerActivism, Modifier.weight(1f), onOpenFbeGuide)
-                        QuickLinkCard("Learn", "Understand tariffs", Icons.Default.School, Modifier.weight(1f), onOpenConcepts)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QuickLinkCard("Check a token", "Compare expected units", Icons.Default.FactCheck, Modifier.weight(1f), onOpenReconcile)
-                        QuickLinkCard("Rate alerts", "See official changes", Icons.Default.NotificationsActive, Modifier.weight(1f), onOpenAlerts)
-                    }
-                }
-            }
-
-            item {
-                SectionTitle(eyebrow = "COVERAGE", title = "Built for South African tariffs")
-            }
-
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    TariffRepository.distributors.forEach { distributor ->
-                        DistributorChip(distributor = distributor, onClick = { onSelectDistributor(distributor) })
-                    }
-                }
-            }
         }
     }
 
@@ -300,6 +258,28 @@ fun HomeScreen(
 }
 
 @Composable
+private fun HouseholdSetupNudge(onOpenHouseholds: () -> Unit) {
+    LiquidGlassPanel(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenHouseholds),
+        shape = RoundedCornerShape(22.dp),
+        accentColor = MaterialTheme.colorScheme.secondary,
+        elevation = 9.dp
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                Icon(Icons.Default.HomeWork, null, Modifier.padding(11.dp).size(23.dp), MaterialTheme.colorScheme.secondary)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Make estimates personal", fontWeight = FontWeight.Black)
+                Text("Save your home once to track tariff blocks, purchases and FBE automatically.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
 private fun MonthlyBlockProgressCard(
     householdName: String,
     profile: TariffProfile,
@@ -315,10 +295,11 @@ private fun MonthlyBlockProgressCard(
     val progress = blockCapacity?.takeIf { it > 0.0 }?.let { (usedInBlock / it).toFloat().coerceIn(0f, 1f) } ?: 1f
     val remaining = blockCapacity?.let { (it - usedInBlock).coerceAtLeast(0.0) }
 
-    Card(
+    LiquidGlassPanel(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f))
+        accentColor = MaterialTheme.colorScheme.secondary,
+        elevation = 12.dp
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -460,12 +441,11 @@ private fun BudgetPulseCard(
     onOpenForecast: () -> Unit
 ) {
     val accent = if (isOnTrack) Color(0xFF0AA873) else Color(0xFFFF7043)
-    Surface(
+    LiquidGlassPanel(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shadowElevation = 2.dp
+        accentColor = accent,
+        elevation = 10.dp
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -514,11 +494,11 @@ private fun QuickEstimatorCard(
     onContinue: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Surface(
+    LiquidGlassPanel(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        accentColor = MaterialTheme.colorScheme.primary,
+        elevation = 12.dp
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Box {
@@ -591,7 +571,11 @@ private fun SmartToolCard(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.width(235.dp).height(175.dp).clickable(onClick = onClick),
+        modifier = Modifier
+            .width(235.dp)
+            .height(175.dp)
+            .premiumDepth(RoundedCornerShape(25.dp), elevation = 12.dp, accentColor = colors.first())
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(25.dp),
         color = Color.Transparent
     ) {
@@ -619,11 +603,11 @@ private fun QuickLinkCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Surface(
+    LiquidGlassPanel(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        accentColor = MaterialTheme.colorScheme.primary,
+        elevation = 7.dp
     ) {
         Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)) {
@@ -640,7 +624,10 @@ private fun QuickLinkCard(
 @Composable
 private fun DistributorChip(distributor: Distributor, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.width(195.dp).clickable(onClick = onClick),
+        modifier = Modifier
+            .width(195.dp)
+            .premiumDepth(RoundedCornerShape(20.dp), elevation = 6.dp, accentColor = MaterialTheme.colorScheme.secondary)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)

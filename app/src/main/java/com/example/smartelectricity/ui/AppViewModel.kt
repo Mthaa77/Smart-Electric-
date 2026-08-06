@@ -1,6 +1,7 @@
 package com.example.smartelectricity.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.smartelectricity.data.db.*
@@ -35,10 +36,13 @@ data class CalculatorUiState(
     val activeHousehold: HouseholdEntity? = null,
     val monthlyBudgetLimitRand: Double = 1500.0,
     val purchaseSaveMessage: String? = null,
-    val isActiveResultRecorded: Boolean = false
+    val isActiveResultRecorded: Boolean = false,
+    val hasCompletedOnboarding: Boolean = false
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val preferences = application.getSharedPreferences("smart_electricity_preferences", Context.MODE_PRIVATE)
 
     private val db = AppDatabase.getDatabase(application)
     private val householdDao = db.householdDao()
@@ -47,10 +51,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val weeklySpendDao = db.weeklySpendDao()
     private val tariffDao = db.tariffDao()
     private val purchaseLedgerDao = db.purchaseLedgerDao()
+    private var recordPurchaseAfterHouseholdSave = false
+    private var lastRecordedPurchaseId: Long? = null
 
     val tariffDataRepository = TariffDataRepository(tariffDao)
 
-    private val _uiState = MutableStateFlow(CalculatorUiState())
+    private val _uiState = MutableStateFlow(
+        CalculatorUiState(
+            hasCompletedOnboarding = preferences.getBoolean("has_completed_onboarding", false),
+            monthlyBudgetLimitRand = preferences.getFloat("monthly_budget_limit", 1500f).toDouble()
+        )
+    )
     val uiState: StateFlow<CalculatorUiState> = _uiState.asStateFlow()
 
     val allHouseholds: StateFlow<List<HouseholdEntity>> = householdDao.getAllHouseholds()
@@ -65,8 +76,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val currentYearMonth: String
         get() = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.US).format(java.util.Date())
 
-    val monthlySpendingTotal: StateFlow<Double> = purchaseLedgerDao.observeTotalSpendForMonth(currentYearMonth)
+    val monthlySpendingTotal: StateFlow<Double> = uiState
+        .map { it.activeHousehold?.id }
+        .distinctUntilChanged()
+        .flatMapLatest { householdId ->
+            if (householdId == null) purchaseLedgerDao.observeTotalSpendForMonth(currentYearMonth)
+            else purchaseLedgerDao.observeTotalSpendForHouseholdMonth(householdId, currentYearMonth)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val activePurchases: StateFlow<List<PrepaidPurchaseEntity>> = uiState
+        .map { it.activeHousehold?.id }
+        .distinctUntilChanged()
+        .flatMapLatest { householdId ->
+            if (householdId == null) flowOf(emptyList())
+            else purchaseLedgerDao.observePurchasesForHousehold(householdId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val activeLedger: StateFlow<MonthlyBlockLedgerEntity?> = uiState
         .map { state -> Triple(state.activeHousehold?.id, currentYearMonth, state.selectedProfile.id) }
@@ -81,6 +107,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        viewModelScope.launch {
+            householdDao.getAllHouseholds().firstOrNull()?.firstOrNull()?.let { savedHousehold ->
+                if (_uiState.value.activeHousehold == null) selectHousehold(savedHousehold)
+            }
+        }
         viewModelScope.launch {
             tariffDataRepository.refreshBundledTariffs()
         }
@@ -119,7 +150,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setCalculationMode(mode: CalculationMode) {
-        val defaultVal = if (mode == CalculationMode.RAND_TO_KWH) "200.00" else "100.0"
+        val defaultVal = when (mode) {
+            CalculationMode.RAND_TO_KWH -> "200.00"
+            CalculationMode.KWH_TO_RAND -> "100.0"
+            CalculationMode.CONVENTIONAL_BILL -> "0.0"
+        }
         _uiState.update {
             it.copy(
                 calculationMode = mode,
@@ -157,7 +192,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setMonthlyBudgetLimit(limit: Double) {
-        _uiState.update { it.copy(monthlyBudgetLimitRand = limit.coerceAtLeast(10.0)) }
+        val safeLimit = limit.coerceAtLeast(10.0)
+        preferences.edit().putFloat("monthly_budget_limit", safeLimit.toFloat()).apply()
+        _uiState.update { it.copy(monthlyBudgetLimitRand = safeLimit) }
+    }
+
+    fun setMeterType(meterType: MeterType) {
+        _uiState.update { it.copy(meterType = meterType) }
+    }
+
+    fun completeOnboarding() {
+        preferences.edit().putBoolean("has_completed_onboarding", true).apply()
+        _uiState.update { it.copy(hasCompletedOnboarding = true) }
+    }
+
+    fun cancelPendingPurchaseRecord() {
+        recordPurchaseAfterHouseholdSave = false
     }
 
     fun setFirstPurchaseOfMonth(isFirst: Boolean) {
@@ -269,7 +319,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val household = state.activeHousehold
         val result = state.activeResult
         if (household == null) {
-            _uiState.update { it.copy(purchaseSaveMessage = "Save or select a household before recording this purchase.") }
+            recordPurchaseAfterHouseholdSave = true
+            _uiState.update { it.copy(purchaseSaveMessage = "Save this home to connect the purchase to its monthly tariff block.") }
             return
         }
         if (result == null || result.mode != CalculationMode.RAND_TO_KWH) {
@@ -316,7 +367,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 lastFixedChargeRecoveryAt = if (result.fixedChargeDeductedRand > 0.0) now else existing?.lastFixedChargeRecoveryAt,
                 updatedAt = now
             )
-            purchaseLedgerDao.recordPurchase(purchase, updatedLedger)
+            lastRecordedPurchaseId = purchaseLedgerDao.recordPurchase(purchase, updatedLedger)
             saveCalculationToHistory(result, isCommittedPurchase = true)
             _uiState.update {
                 it.copy(
@@ -346,6 +397,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         _uiState.update { it.copy(activeReconciliation = reconciliation) }
+        lastRecordedPurchaseId?.let { purchaseId ->
+            viewModelScope.launch {
+                purchaseLedgerDao.updateActualUnits(purchaseId, actualUnits)
+            }
+        }
     }
 
     fun saveHousehold(nickname: String, suburb: String, propertyValueRand: Double, historicAverageMonthlyKwh: Double) {
@@ -368,6 +424,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     activeHousehold = savedHousehold,
                     propertyValuationRand = propertyValueRand.coerceAtLeast(0.0)
                 )
+            }
+            if (recordPurchaseAfterHouseholdSave && savedHousehold != null && _uiState.value.activeResult != null) {
+                recordPurchaseAfterHouseholdSave = false
+                recordActivePurchase()
             }
         }
     }

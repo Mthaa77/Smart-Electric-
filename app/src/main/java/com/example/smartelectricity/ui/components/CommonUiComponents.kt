@@ -14,12 +14,97 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.smartelectricity.data.model.BlockBreakdown
 import com.example.smartelectricity.data.model.VerificationStatus
+
+/**
+ * A restrained glass surface for high-value navigation and summary content.
+ *
+ * Compose does not provide a portable backdrop blur on every supported Android version,
+ * so the effect uses layered translucency, a directional highlight, a tinted edge and a
+ * soft coloured shadow. The surface stays opaque enough to preserve text contrast.
+ */
+@Composable
+fun LiquidGlassPanel(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(24.dp),
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    elevation: Dp = 12.dp,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val surface = MaterialTheme.colorScheme.surface
+    val container = MaterialTheme.colorScheme.primaryContainer
+    val outline = MaterialTheme.colorScheme.outline
+
+    Box(
+        modifier = modifier
+            .shadow(
+                elevation = elevation,
+                shape = shape,
+                clip = false,
+                ambientColor = accentColor.copy(alpha = 0.18f),
+                spotColor = accentColor.copy(alpha = 0.28f)
+            )
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        surface.copy(alpha = 0.96f),
+                        container.copy(alpha = 0.52f),
+                        surface.copy(alpha = 0.88f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.72f),
+                        accentColor.copy(alpha = 0.30f),
+                        outline.copy(alpha = 0.42f)
+                    )
+                ),
+                shape = shape
+            )
+    ) {
+        content()
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(0.82f)
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.88f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+    }
+}
+
+fun Modifier.premiumDepth(
+    shape: Shape,
+    elevation: Dp = 8.dp,
+    accentColor: Color = Color(0xFF1769FF)
+): Modifier = shadow(
+    elevation = elevation,
+    shape = shape,
+    clip = false,
+    ambientColor = accentColor.copy(alpha = 0.14f),
+    spotColor = accentColor.copy(alpha = 0.22f)
+)
 
 @Composable
 fun VerificationStatusBadge(

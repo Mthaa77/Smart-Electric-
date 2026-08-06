@@ -25,8 +25,10 @@ import com.example.smartelectricity.data.model.MeterType
 import com.example.smartelectricity.data.model.TariffProfile
 import com.example.smartelectricity.data.model.isCalculationSupported
 import com.example.smartelectricity.ui.CalculatorUiState
+import com.example.smartelectricity.ui.components.LiquidGlassPanel
 import com.example.smartelectricity.ui.components.QuickAmountChips
 import com.example.smartelectricity.ui.components.VerificationStatusBadge
+import com.example.smartelectricity.ui.components.premiumDepth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,11 +44,45 @@ fun CalculatorWizardScreen(
     onSetUnitsAlreadyAllocated: (String) -> Unit,
     onSetDaysSinceLastPurchase: (String) -> Unit,
     onSetArrears: (String) -> Unit,
+    onSetOpeningReading: (String) -> Unit,
+    onSetClosingReading: (String) -> Unit,
+    onSetBillingDays: (String) -> Unit,
     onRunCalculation: () -> Unit,
     onCalculationDone: () -> Unit,
     onBackToHome: () -> Unit
 ) {
-    var step by remember { mutableIntStateOf(1) }
+    val steps = buildList {
+        if (state.activeHousehold == null) {
+            add(1)
+            add(2)
+        }
+        add(3)
+        if (
+            state.activeHousehold == null &&
+            state.calculationMode != CalculationMode.CONVENTIONAL_BILL &&
+            state.selectedProfile.fbeConfig.isAvailable
+        ) add(4)
+        add(5)
+    }
+    var stepPosition by remember(state.activeHousehold?.id, state.calculationMode) { mutableIntStateOf(0) }
+    val safePosition = stepPosition.coerceIn(0, steps.lastIndex)
+    val step = steps[safePosition]
+    val canCalculate = state.selectedProfile.isCalculationSupported && when (state.calculationMode) {
+        CalculationMode.CONVENTIONAL_BILL -> {
+            val opening = state.openingReadingInputStr.toDoubleOrNull() ?: 0.0
+            val closing = state.closingReadingInputStr.toDoubleOrNull() ?: 0.0
+            closing > opening && (state.billingDaysInputStr.toIntOrNull() ?: 0) > 0
+        }
+        else -> (state.amountInputStr.toDoubleOrNull() ?: 0.0) > 0.0
+    }
+
+    fun previousStep() {
+        if (safePosition > 0) stepPosition = safePosition - 1 else onBackToHome()
+    }
+
+    fun nextStep() {
+        if (safePosition < steps.lastIndex) stepPosition = safePosition + 1
+    }
 
     Scaffold(
         topBar = {
@@ -54,12 +90,12 @@ fun CalculatorWizardScreen(
                 title = {
                     Column {
                         Text("Guided calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                        Text("Step $step of 5 · ${getStepTitle(step)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Step ${safePosition + 1} of ${steps.size} · ${getStepTitle(step, state.calculationMode)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (step > 1) step-- else onBackToHome()
+                        previousStep()
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
@@ -67,53 +103,71 @@ fun CalculatorWizardScreen(
             )
         },
         bottomBar = {
-            Surface(
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surface
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                LiquidGlassPanel(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    elevation = 16.dp
                 ) {
-                    if (step > 1) {
-                        OutlinedButton(
-                            onClick = { step-- },
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text("Previous")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (safePosition > 0) {
+                            OutlinedButton(
+                                onClick = { previousStep() },
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text("Previous")
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.width(1.dp))
                         }
-                    } else {
-                        Spacer(modifier = Modifier.width(1.dp))
-                    }
 
-                    if (step < 5) {
-                        Button(
-                            onClick = { step++ },
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text("Next Step")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    } else {
-                        Button(
-                            onClick = {
-                                onRunCalculation()
-                                onCalculationDone()
-                            },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            enabled = state.selectedProfile.isCalculationSupported &&
-                                (state.amountInputStr.toDoubleOrNull() ?: 0.0) > 0.0
-                        ) {
-                            Icon(Icons.Default.Calculate, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Calculate Estimate", fontWeight = FontWeight.Bold)
+                        if (safePosition < steps.lastIndex) {
+                            Button(
+                                onClick = { nextStep() },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.premiumDepth(
+                                    shape = RoundedCornerShape(16.dp),
+                                    elevation = 7.dp,
+                                    accentColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text("Next Step")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    onRunCalculation()
+                                    onCalculationDone()
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.premiumDepth(
+                                    shape = RoundedCornerShape(16.dp),
+                                    elevation = 8.dp,
+                                    accentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                enabled = canCalculate
+                            ) {
+                                Icon(Icons.Default.Calculate, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Calculate Estimate", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -128,7 +182,7 @@ fun CalculatorWizardScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             LinearProgressIndicator(
-                progress = { step / 5f },
+                progress = { (safePosition + 1) / steps.size.toFloat() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp),
@@ -140,16 +194,23 @@ fun CalculatorWizardScreen(
                 SegmentedButton(
                     selected = state.calculationMode == CalculationMode.RAND_TO_KWH,
                     onClick = { onSetMode(CalculationMode.RAND_TO_KWH) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    label = { Text("Rand → kWh", fontWeight = FontWeight.SemiBold) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                    label = { Text("Buy", fontWeight = FontWeight.SemiBold) },
                     icon = { Icon(Icons.Default.Payments, null, Modifier.size(16.dp)) }
                 )
                 SegmentedButton(
                     selected = state.calculationMode == CalculationMode.KWH_TO_RAND,
                     onClick = { onSetMode(CalculationMode.KWH_TO_RAND) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    label = { Text("kWh → Rand", fontWeight = FontWeight.SemiBold) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                    label = { Text("Plan", fontWeight = FontWeight.SemiBold) },
                     icon = { Icon(Icons.Default.ElectricBolt, null, Modifier.size(16.dp)) }
+                )
+                SegmentedButton(
+                    selected = state.calculationMode == CalculationMode.CONVENTIONAL_BILL,
+                    onClick = { onSetMode(CalculationMode.CONVENTIONAL_BILL) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                    label = { Text("Bill", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.ReceiptLong, null, Modifier.size(16.dp)) }
                 )
             }
 
@@ -159,14 +220,14 @@ fun CalculatorWizardScreen(
                         state = state,
                         onSelectDistributor = { dist ->
                             onSelectDistributor(dist)
-                            step = 2
+                            nextStep()
                         }
                     )
                     2 -> Step2ProfileSelection(
                         state = state,
                         onSelectProfile = { prof ->
                             onSelectProfile(prof)
-                            step = 3
+                            nextStep()
                         }
                     )
                     3 -> Step3AmountEntry(
@@ -176,7 +237,10 @@ fun CalculatorWizardScreen(
                         onSetHasClaimedFbe = onSetHasClaimedFbe,
                         onSetUnitsAlreadyAllocated = onSetUnitsAlreadyAllocated,
                         onSetDaysSinceLastPurchase = onSetDaysSinceLastPurchase,
-                        onSetArrears = onSetArrears
+                        onSetArrears = onSetArrears,
+                        onSetOpeningReading = onSetOpeningReading,
+                        onSetClosingReading = onSetClosingReading,
+                        onSetBillingDays = onSetBillingDays
                     )
                     4 -> Step4FbeQuestions(
                         state = state,
@@ -184,7 +248,9 @@ fun CalculatorWizardScreen(
                     )
                     5 -> Step5ReviewAssumptions(
                         state = state,
-                        onEditStep = { step = it }
+                        onEditStep = { requested ->
+                            steps.indexOf(requested).takeIf { it >= 0 }?.let { stepPosition = it }
+                        }
                     )
                 }
             }
@@ -192,10 +258,10 @@ fun CalculatorWizardScreen(
     }
 }
 
-private fun getStepTitle(step: Int): String = when (step) {
+private fun getStepTitle(step: Int, mode: CalculationMode): String = when (step) {
     1 -> "Select Electricity Supplier"
     2 -> "Select Tariff Profile"
-    3 -> "Enter Purchase Amount"
+    3 -> if (mode == CalculationMode.CONVENTIONAL_BILL) "Enter Meter Readings" else "Enter Amount"
     4 -> "FBE Relief Diagnostic"
     5 -> "Review & Calculate"
     else -> ""
@@ -241,6 +307,13 @@ private fun Step1SupplierSelection(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (isSelected) Modifier.premiumDepth(
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = 10.dp,
+                                accentColor = MaterialTheme.colorScheme.primary
+                            ) else Modifier
+                        )
                         .clickable { onSelectDistributor(dist) },
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -298,12 +371,19 @@ private fun Step2ProfileSelection(
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(state.selectedDistributor.profiles) { prof ->
+            items(state.selectedDistributor.profiles.filter { state.meterType in it.compatibleMeterTypes }) { prof ->
                 val isSelected = prof.id == state.selectedProfile.id
                 val isSupported = prof.isCalculationSupported
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (isSelected) Modifier.premiumDepth(
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = 10.dp,
+                                accentColor = MaterialTheme.colorScheme.primary
+                            ) else Modifier
+                        )
                         .clickable(enabled = isSupported) { onSelectProfile(prof) },
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -371,9 +451,13 @@ private fun Step3AmountEntry(
     onSetHasClaimedFbe: (Boolean) -> Unit,
     onSetUnitsAlreadyAllocated: (String) -> Unit,
     onSetDaysSinceLastPurchase: (String) -> Unit,
-    onSetArrears: (String) -> Unit
+    onSetArrears: (String) -> Unit,
+    onSetOpeningReading: (String) -> Unit,
+    onSetClosingReading: (String) -> Unit,
+    onSetBillingDays: (String) -> Unit
 ) {
     val isRand = state.calculationMode == CalculationMode.RAND_TO_KWH
+    val isConventional = state.calculationMode == CalculationMode.CONVENTIONAL_BILL
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -381,13 +465,57 @@ private fun Step3AmountEntry(
     ) {
         item {
             Text(
-                text = if (isRand) "How much are you planning to spend?" else "How many electricity units do you need?",
+                text = when {
+                    isConventional -> "Enter the readings from your meter or bill."
+                    isRand -> "How much are you planning to spend?"
+                    else -> "How many electricity units do you need?"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        item {
+        if (isConventional) {
+            item {
+                LiquidGlassPanel(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    accentColor = MaterialTheme.colorScheme.secondary,
+                    elevation = 8.dp
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = state.openingReadingInputStr,
+                            onValueChange = onSetOpeningReading,
+                            label = { Text("Opening meter reading") },
+                            suffix = { Text("kWh") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        OutlinedTextField(
+                            value = state.closingReadingInputStr,
+                            onValueChange = onSetClosingReading,
+                            label = { Text("Closing meter reading") },
+                            suffix = { Text("kWh") },
+                            supportingText = { Text("Must be higher than the opening reading.") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        OutlinedTextField(
+                            value = state.billingDaysInputStr,
+                            onValueChange = onSetBillingDays,
+                            label = { Text("Billing period") },
+                            suffix = { Text("days") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                    }
+                }
+            }
+        } else item {
             OutlinedTextField(
                 value = state.amountInputStr,
                 onValueChange = onSetAmount,
@@ -400,7 +528,7 @@ private fun Step3AmountEntry(
             )
         }
 
-        item {
+        if (!isConventional) item {
             Text("Quick Presets:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             QuickAmountChips(
                 selectedAmount = state.amountInputStr.toDoubleOrNull() ?: 0.0,
@@ -409,12 +537,12 @@ private fun Step3AmountEntry(
             )
         }
 
-        item {
+        if (!isConventional) item {
             Divider(modifier = Modifier.padding(vertical = 8.dp))
             Text("Monthly Purchase Context", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         }
 
-        item {
+        if (!isConventional) item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -459,7 +587,7 @@ private fun Step3AmountEntry(
             }
         }
 
-        item {
+        if (!isConventional) item {
             var showAdvanced by remember { mutableStateOf(false) }
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -599,27 +727,52 @@ private fun Step5ReviewAssumptions(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AssumptionRow(label = "Supplier", value = state.selectedDistributor.name, onEdit = { onEditStep(1) })
-                    Divider()
-                    AssumptionRow(label = "Tariff Profile", value = state.selectedProfile.name, onEdit = { onEditStep(2) })
-                    Divider()
                     AssumptionRow(
-                        label = if (state.calculationMode == CalculationMode.RAND_TO_KWH) "Purchase Amount" else "Target Units",
-                        value = if (state.calculationMode == CalculationMode.RAND_TO_KWH) "R${state.amountInputStr}" else "${state.amountInputStr} kWh",
-                        onEdit = { onEditStep(3) }
+                        label = "Supplier",
+                        value = state.selectedDistributor.name,
+                        onEdit = if (state.activeHousehold == null) ({ onEditStep(1) }) else null
                     )
                     Divider()
                     AssumptionRow(
-                        label = "First Monthly Purchase?",
-                        value = if (state.isFirstPurchaseOfMonth) "Yes (Recover fixed fees)" else "No (Top-up)",
-                        onEdit = { onEditStep(3) }
+                        label = "Tariff profile",
+                        value = state.selectedProfile.name,
+                        onEdit = if (state.activeHousehold == null) ({ onEditStep(2) }) else null
                     )
                     Divider()
-                    AssumptionRow(
-                        label = "FBE Eligibility Status",
-                        value = if (state.isIndigentRegistered) "Registered Indigent (+50-100 kWh free)" else "Standard Household",
-                        onEdit = { onEditStep(4) }
-                    )
+                    if (state.calculationMode == CalculationMode.CONVENTIONAL_BILL) {
+                        AssumptionRow(
+                            label = "Meter readings",
+                            value = "${state.openingReadingInputStr} → ${state.closingReadingInputStr} kWh",
+                            onEdit = { onEditStep(3) }
+                        )
+                        Divider()
+                        AssumptionRow(
+                            label = "Billing period",
+                            value = "${state.billingDaysInputStr} days",
+                            onEdit = { onEditStep(3) }
+                        )
+                    } else {
+                        AssumptionRow(
+                            label = if (state.calculationMode == CalculationMode.RAND_TO_KWH) "Purchase amount" else "Target units",
+                            value = if (state.calculationMode == CalculationMode.RAND_TO_KWH) "R${state.amountInputStr}" else "${state.amountInputStr} kWh",
+                            onEdit = { onEditStep(3) }
+                        )
+                        Divider()
+                        AssumptionRow(
+                            label = "Monthly context",
+                            value = state.activeHousehold?.let { "Automatic · ${it.nickname}" }
+                                ?: if (state.isFirstPurchaseOfMonth) "First purchase" else "Top-up",
+                            onEdit = { onEditStep(3) }
+                        )
+                        if (state.selectedProfile.fbeConfig.isAvailable) {
+                            Divider()
+                            AssumptionRow(
+                                label = "FBE status",
+                                value = if (state.isIndigentRegistered) "Registered as indigent" else "Standard household",
+                                onEdit = if (state.activeHousehold == null) ({ onEditStep(4) }) else null
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -630,7 +783,7 @@ private fun Step5ReviewAssumptions(
 private fun AssumptionRow(
     label: String,
     value: String,
-    onEdit: () -> Unit
+    onEdit: (() -> Unit)?
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -641,8 +794,10 @@ private fun AssumptionRow(
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
         }
-        TextButton(onClick = onEdit) {
-            Text("Edit")
+        if (onEdit != null) {
+            TextButton(onClick = onEdit) { Text("Edit") }
+        } else {
+            Icon(Icons.Default.CheckCircle, contentDescription = "Loaded from active home", tint = MaterialTheme.colorScheme.secondary)
         }
     }
 }
